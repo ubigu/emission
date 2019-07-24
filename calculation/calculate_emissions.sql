@@ -56,10 +56,10 @@ DECLARE
 
     /* Traffic globals */
     new_lj boolean;
-    kvoima_apu1 real[];
-    kvoima_foss_osa real[];
-    kvoima_gco2kwh real[];
-    kvoima_apu2 real[];
+    kvoima_apu1 real[]; -- Dummy-muuttuja, jolla huomioidaan laskennassa sähkön käyttö sähköautoissa, pistokehybrideissä ja polttokennoautojen vedyn tuotannossa [ei yksikköä]. Lukuarvo riippuu käyttövoimasta ja laskentavuodesta.
+    kvoima_foss_osa real[]; -- Käyttövoimien fossiiliset osuudet [ei yksikköä]. Lukuarvo riippuu taustaskenaariosta, laskentavuodesta ja käyttövoimasta.
+    kvoima_gco2kwh real[]; -- Käyttövoimien  kasvihuonekaasujen ominaispäästökerroin käytettyä energiayksikköä kohti [gCO2-ekv/kWh]. Lukuarvo riippuu taustaskenaariosta, laskentavuodesta (ja käyttövoimasta).
+    kvoima_apu2 real[]; -- Dummy-muuttuja, jonka avulla huomioidaan laskennassa muut käyttövoimat kuin sähkö [ei yksikköä]. Lukuarvo riippuu käyttövoimasta ja laskentavuodesta.
     gco2kwh_matrix real[];
 
     muunto_massa real default 0.000001; -- Muuntaa grammat tonneiksi (0.000001) [t/g].
@@ -172,6 +172,9 @@ BEGIN
     SELECT array[kvoima_bensiini, kvoima_etanoli, kvoima_diesel, kvoima_kaasu, kvoima_phev_b, kvoima_phev_d, kvoima_ev, kvoima_vety]
         INTO kvoima_apu2 FROM liikenne.kvoima_apu2 a2
         WHERE a2.vuosi = year;
+
+    /* Kasvihuonekaasupäästöjen keskimääräiset ominaispäästökertoimet [gCO2-ekv/kWh] määritellään
+    käyttövoimien ominaispäästökertoimien suoriteosuuksilla painotettuna keskiarvona huomioiden samalla niiden bio-osuudet. */
 
     SELECT array(SELECT sahko_gco2kwh * unnest(kvoima_apu1) + unnest(kvoima_gco2kwh) * unnest(kvoima_foss_osa) * unnest(kvoima_apu2)) INTO gco2kwh_matrix;
 
