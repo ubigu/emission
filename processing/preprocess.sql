@@ -7,8 +7,7 @@ public.il_preprocess(
 RETURNS TABLE (
     geom geometry,
     xyind varchar,
-    vyoh15 integer,
-    vyoh15seli varchar(80),
+    vyoh integer,
     centdist integer,
     v_yht integer,
     tp_yht integer
@@ -20,8 +19,7 @@ BEGIN
 EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr AS SELECT ykr.geom, ykr.xyind FROM aluejaot."YKR_perusruudukko" ykr WHERE ST_Intersects(ykr.geom, (SELECT rajaus.geom FROM ' || quote_ident(aoi) ||' rajaus))';
 
 ALTER TABLE ykr
-    ADD COLUMN IF NOT EXISTS vyoh15 integer,
-    ADD COLUMN IF NOT EXISTS vyoh15seli varchar(80),
+    ADD COLUMN IF NOT EXISTS vyoh integer,
     ADD COLUMN IF NOT EXISTS centdist integer,
     ADD COLUMN IF NOT EXISTS v_yht integer,
     ADD COLUMN IF NOT EXISTS tp_yht integer,
@@ -29,7 +27,7 @@ ALTER TABLE ykr
 CREATE INDEX ON ykr USING GIST (geom);
     
 /* Liitetään UZ, väestö ja työpaikkatiedot */
-UPDATE ykr SET vyoh15 = uz.vyoh15, vyoh15seli = uz.vyoh15seli FROM aluejaot."YKRVyohykkeet2015" AS uz WHERE ST_WITHIN(ST_CENTROID(ykr.geom), uz.geom);
+UPDATE ykr SET vyoh = uz.vyoh FROM aluejaot."ykr_vyohykkeet" AS uz WHERE ST_WITHIN(ST_CENTROID(ykr.geom), uz.geom);
 EXECUTE 'UPDATE ykr SET v_yht = v.v_yht FROM '|| quote_ident(ykr_v) ||' v WHERE v.xyind IN (SELECT ykr.xyind FROM ykr) AND v.xyind = ykr.xyind';
 EXECUTE 'UPDATE ykr SET tp_yht = tp.tp_yht FROM '|| quote_ident(ykr_tp) ||' tp WHERE tp.xyind IN (SELECT ykr.xyind FROM ykr) AND tp.xyind = ykr.xyind';
 
@@ -49,15 +47,11 @@ UPDATE ykr SET centdist = sq.centdist FROM
 
 /* Force YKR Urban zones into HLT-zone classification */
 UPDATE ykr
-SET vyoh15seli = CASE WHEN ykr.vyoh15 IN (11,12) THEN 'Alakeskuksen jalankulkuvyöhyke' 
-	WHEN ykr.vyoh15 IN (40,41,42) THEN 'Keskustan reunavyöhyke'
-	WHEN ykr.vyoh15 IS NULL THEN 'Autovyöhyke' ELSE ykr.vyoh15seli END,
-vyoh15 = CASE WHEN ykr.vyoh15 IN (11,12) THEN 10
-	WHEN ykr.vyoh15 IN (40,41,42) THEN 2
-	WHEN ykr.vyoh15 IS NULL THEN 5 ELSE ykr.vyoh15 END;
-UPDATE ykr
-	SET vyoh15seli = 'Alakeskuksen jalankulkuvyöhyke (Hervanta)',
-		vyoh15 = 837101 WHERE st_dwithin(ykr.geom,(SELECT ST_centroid(keskusta.geom) FROM aluejaot."KeskustaAlueet" keskusta WHERE keskusta.keskusnimi = 'Hervanta'), 2000) AND ykr.vyoh15 = 10;
+SET vyoh = CASE WHEN ykr.vyoh IN (11,12) THEN 10 -- 'Alakeskuksen jalankulkuvyöhyke' 
+	WHEN ykr.vyoh IN (40,41,42) THEN 2 -- 'Keskustan reunavyöhyke'
+	WHEN ykr.vyoh IS NULL THEN 5 ELSE ykr.vyoh END; -- 'Autovyöhyke'
+UPDATE ykr SET
+    vyoh = 837101 WHERE st_dwithin(ykr.geom,(SELECT ST_centroid(keskusta.geom) FROM aluejaot."KeskustaAlueet" keskusta WHERE keskusta.keskusnimi = 'Hervanta'), 2000) AND ykr.vyoh = 10; --  'Alakeskuksen jalankulkuvyöhyke (Hervanta)'
 
 RETURN QUERY SELECT * FROM ykr;
 DROP TABLE ykr;

@@ -12,8 +12,7 @@ public.il_numerize(
 RETURNS TABLE (
     geom geometry,
     xyind varchar,
-    vyoh15 integer,
-    -- vyoh15seli varchar(80),
+    vyoh integer,
     centdist integer,
     v_yht integer,
     tp_yht integer,
@@ -65,7 +64,6 @@ SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = kt_ta
 SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = kt_taulu AND column_name='k_valmisv') INTO valmisv_exists;
 
 ALTER TABLE ykr
-    DROP COLUMN IF EXISTS vyoh15seli,
     ADD COLUMN IF NOT EXISTS k_ap_ala float default 0,
     ADD COLUMN IF NOT EXISTS k_ar_ala float default 0,
     ADD COLUMN IF NOT EXISTS k_ak_ala float default 0,
@@ -174,7 +172,7 @@ UPDATE keskusta_alueet_centroid
 SET geom = ST_CENTROID(uz.geom)
     FROM uz
         WHERE ST_INTERSECTS(keskusta_alueet_centroid.geom, uz.geom)
-        AND uz.vyoh15 = 1;
+        AND uz.vyoh = 1;
         /* Tästä poistettu returning * - toimiiko vielä? */
 CREATE INDEX ON keskusta_alueet_centroid USING GIST (geom);
 
@@ -226,17 +224,17 @@ WHERE ykr.xyind = sq2.xyind;
 /* YHDYSKUNTARAKENTEEN VYÖHYKKEIDEN PÄIVITTÄMINEN */
 CREATE TEMP TABLE IF NOT EXISTS uz_new AS
 SELECT * FROM
-    (SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind, 1 AS vyoh15 -- 'Keskustan jalankulkuvyöhyke' as vyoh15seli
+    (SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind, 1 AS vyoh -- 'Keskustan jalankulkuvyöhyke'
     FROM ykr, uz
     /* Search for grid cells within current UZ central areas delineation */
     WHERE ykr.maa_ha != 0 AND
-        (st_within(st_centroid(ykr.geom), uz.geom) AND uz.vyoh15 = 1)
+        (st_within(st_centroid(ykr.geom), uz.geom) AND uz.vyoh = 1)
         /* and those cells that touch the current centers - have to use d_within for fastest approximation, st_touches doesn't work due to false DE-9IM relations */
         OR (st_dwithin(YKR.geom, uz.geom,25)
         /* Main centers must be within 1.5 km from core */
         /* NYT vain Tampere - jatkossa pitäisi luetella tähän kaikki kaupunkiseutukeskustat SYKE:n oletusetäisyysarvoineen */
         AND (
-            (uz.vyoh15 = 1
+            (uz.vyoh = 1
                 AND st_dwithin(YKR.geom,
                     (SELECT keskusverkko.geom FROM keskusverkko WHERE keskusverkko.keskusnimi = 'Tampere'),
                     1500)
@@ -253,11 +251,11 @@ SELECT * FROM
     
     /* Olemassaolevien alakeskusten reunojen kasvatus */
     SELECT * FROM
-    (SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind, 10 AS vyoh15 --, 'Alakeskuksen jalankulkuvyöhyke' as vyoh15seli
+    (SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind, 10 AS vyoh
     FROM ykr, uz, keskusverkko /* keskus */
     /* Search for grid cells within current UZ central areas delineation */
-    WHERE ykr.maa_ha != 0 AND (st_within(st_centroid(ykr.geom), uz.geom) AND uz.vyoh15 IN (10,11,12, 837101))
-        OR (st_dwithin(YKR.geom, uz.geom, 25) AND uz.vyoh15 IN (10,11,12, 837101))
+    WHERE ykr.maa_ha != 0 AND (st_within(st_centroid(ykr.geom), uz.geom) AND uz.vyoh IN (10,11,12, 837101))
+        OR (st_dwithin(YKR.geom, uz.geom, 25) AND uz.vyoh IN (10,11,12, 837101))
         AND (ykr.alueteho > 0.05 AND ykr.tp_yht > 0)
         AND (ykr.alueteho > 0.2 AND ykr.v_yht >= 100 AND YKR.tp_yht > 0)
         /* Select only edge neighbours, no corner touchers */
@@ -268,7 +266,7 @@ SELECT * FROM
     UNION
     
     SELECT * FROM
-        (SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind, 10 AS vyoh15 --, 'Alakeskuksen jalankulkuvyöhyke' as vyoh15seli
+        (SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind, 10 AS vyoh
         FROM ykr, keskusverkko
         WHERE ykr.maa_ha != 0
         AND (st_dwithin(YKR.geom, keskusverkko.geom, 250) AND keskusverkko.keskustyyp = 'Kaupunkiseudun iso alakeskus')
@@ -280,17 +278,17 @@ SELECT * FROM
     CREATE INDEX ON uz_new USING GIST (geom);
 
     /* Erityistapaukset */
-    UPDATE uz_new SET vyoh15 = 837101 WHERE uz_new.vyoh15 = 10 AND st_dwithin(uz_new.geom,
+    UPDATE uz_new SET vyoh = 837101 WHERE uz_new.vyoh = 10 AND st_dwithin(uz_new.geom,
             (SELECT keskusverkko.geom FROM keskusverkko WHERE keskusverkko.keskusnimi = 'Hervanta'), 2000);
 
     /* Keskustan reunavyöhykkeet */
     INSERT INTO uz_new
-        SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind, 2 AS vyoh15 --, 'Keskustan reunavyöhyke' as vyoh15seli
+        SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind, 2 AS vyoh
         FROM ykr, uz_new
         WHERE NOT EXISTS (
             SELECT 1 FROM uz_new
-            WHERE st_intersects(st_centroid(ykr.geom), uz_new.geom) AND uz_new.vyoh15 = 1
-        ) AND st_dwithin(ykr.geom, uz_new.geom,1000) AND uz_new.vyoh15 = 1 AND (ykr.maa_ha/6.25 > 0.1 OR ykr.v_yht > 0 OR ykr.tp_yht > 0);
+            WHERE st_intersects(st_centroid(ykr.geom), uz_new.geom) AND uz_new.vyoh = 1
+        ) AND st_dwithin(ykr.geom, uz_new.geom,1000) AND uz_new.vyoh = 1 AND (ykr.maa_ha/6.25 > 0.1 OR ykr.v_yht > 0 OR ykr.tp_yht > 0);
     
 
 /* JOUKKOLIIKENNEVYÖHYKKEET */
@@ -311,21 +309,21 @@ WHERE targetykr.xyind = n.xyind;
 
 /* Intensiiviset joukkoliikennevyöhykkeet - nykyisten kasvatus */
 INSERT INTO uz_new
-    SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind, 3 AS vyoh15 --, 'Intensiivinen joukkoliikennevyöhyke' AS vyoh15seli
+    SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind, 3 AS vyoh
     FROM ykr, uz
         /* Select only those that are not already something else */
         WHERE NOT EXISTS (
             SELECT 1
             FROM uz_new
             WHERE st_intersects(st_centroid(ykr.geom),uz_new.geom) /* select those that are currently intensiivinen joukkoliikennevyöhyke */
-        ) AND (st_intersects(st_centroid(ykr.geom), uz.geom) AND uz.vyoh15 IN (3,12,41)
-        OR (st_intersects(ykr.geom, uz.geom) AND uz.vyoh15 IN (3,12,41)
-        AND (st_dwithin(ykr.geom, uz.geom,125) AND uz.vyoh15 IN (3,12,41) AND (ykr.v_yht_nn > 797 AND ykr.tp_yht_nn > 280))));
+        ) AND (st_intersects(st_centroid(ykr.geom), uz.geom) AND uz.vyoh IN (3,12,41)
+        OR (st_intersects(ykr.geom, uz.geom) AND uz.vyoh IN (3,12,41)
+        AND (st_dwithin(ykr.geom, uz.geom,125) AND uz.vyoh IN (3,12,41) AND (ykr.v_yht_nn > 797 AND ykr.tp_yht_nn > 280))));
 
 /* Intensiiviset joukkoliikennevyöhykkeet - uudet raideliikenteen pysäkin/asemanseudut */
 IF jl_taulu IS NOT NULL	THEN
     INSERT INTO uz_new
-        SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind, 9993 AS vyoh15 --, 'Intensiivinen joukkoliikennevyöhyke' as vyoh15seli
+        SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind, 9993 AS vyoh
         FROM ykr, uz, jl
             /* Only those that are not already something else */
             WHERE NOT EXISTS (
@@ -337,7 +335,7 @@ END IF;
 
 /* Intensiiviset joukkoliikennevyöhykkeet - uudet muualle syntyvät vyöhykkeet */
 INSERT INTO uz_new
-    SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind, 3 AS vyoh15 --, 'Intensiivinen joukkoliikennevyöhyke' as vyoh15seli
+    SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind, 3 AS vyoh
     FROM ykr, uz
         /* Only those that are not already something else */
         WHERE NOT EXISTS (
@@ -354,30 +352,30 @@ CROSS JOIN LATERAL
  (SELECT
     ST_Distance(uz1.geom, uz2.geom) as dist
     FROM uz_new uz2
- 	WHERE uz1.xyind <> uz2.xyind AND uz1.vyoh15 = 3
+ 	WHERE uz1.xyind <> uz2.xyind AND uz1.vyoh = 3
     ORDER BY uz1.geom <#> uz2.geom
   LIMIT 1) AS test
   WHERE test.dist > 0);
 
 /* Joukkoliikennevyöhykkeet - nykyisten kasvatus */
 INSERT INTO uz_new
-    SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind, 4 AS vyoh15 --, 'Joukkoliikennevyöhyke' as vyoh15seli
+    SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind, 4 AS vyoh
     FROM ykr, uz
         /* Only those that are not already something else */
         WHERE NOT EXISTS (
             SELECT 1
             FROM uz_new
             WHERE st_intersects(st_centroid(ykr.geom),uz_new.geom)
-        ) AND (st_intersects(st_centroid(ykr.geom), uz.geom) AND uz.vyoh15 IN (4,11,40)
-        OR (st_intersects(ykr.geom, uz.geom) AND uz.vyoh15 IN (4,11,40)
+        ) AND (st_intersects(st_centroid(ykr.geom), uz.geom) AND uz.vyoh IN (4,11,40)
+        OR (st_intersects(ykr.geom, uz.geom) AND uz.vyoh IN (4,11,40)
         AND
-     	(st_dwithin(ykr.geom, uz.geom,125) AND uz.vyoh15 IN (4,11,40)) AND
+     	(st_dwithin(ykr.geom, uz.geom,125) AND uz.vyoh IN (4,11,40)) AND
      	(ykr.v_yht_nn > 404 AND ykr.tp_yht_nn > 63)
      	));
      	
 /* Joukkoliikennevyöhykkeet - uudet muualle syntyvät vyöhykkeet */
 INSERT INTO uz_new
-    SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind, 4 AS vyoh15 --, 'Joukkoliikennevyöhyke' as vyoh15seli
+    SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind, 4 AS vyoh
     FROM ykr
         /* Only those that are not already something else */
         WHERE NOT EXISTS (
@@ -389,7 +387,7 @@ INSERT INTO uz_new
 
 /* AUTOVYÖHYKKEET */
 INSERT INTO uz_new
-  SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind, 5 AS vyoh15 --, 'Autovyöhyke' as vyoh15seli
+  SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind, 5 AS vyoh
     FROM ykr, uz
       /* Only those that are not already something else */
     WHERE NOT EXISTS (
@@ -397,19 +395,19 @@ INSERT INTO uz_new
         FROM uz_new
         WHERE st_intersects(st_centroid(ykr.geom),uz_new.geom)
     ) AND ((ykr.maa_ha > 0 AND (ykr.v_yht > 0 OR ykr.tp_yht > 0))
-    OR st_intersects(st_centroid(ykr.geom), uz.geom) AND uz.vyoh15 = 5);
+    OR st_intersects(st_centroid(ykr.geom), uz.geom) AND uz.vyoh = 5);
 
 
 /* Yhdistetään vyöhykkeet ykr-taulukkoon ja päivitetään keskustaetäisyydet tiettyihin minimi- ja maksimiarvoihin pakotettuina. */
 CREATE TEMP TABLE centers as
-SELECT st_centroid((st_dump(st_union(uz_new.geom))).geom) as geom, uz_new.vyoh15 from uz_new
-    WHERE uz_new.vyoh15 IN (1,10)
-    GROUP BY uz_new.vyoh15;
+SELECT st_centroid((st_dump(st_union(uz_new.geom))).geom) as geom, uz_new.vyoh from uz_new
+    WHERE uz_new.vyoh IN (1,10)
+    GROUP BY uz_new.vyoh;
 ALTER TABLE centers ALTER COLUMN geom TYPE geometry(Point, 3067);
 CREATE INDEX ON centers USING GIST (geom);
 
 UPDATE ykr
-SET vyoh15 = uz_new.vyoh15 --, vyoh15seli = uz_new.vyoh15seli
+SET vyoh = uz_new.vyoh
 FROM uz_new WHERE ykr.xyind = uz_new.xyind;
 
 UPDATE ykr
@@ -419,7 +417,7 @@ SET centdist = sq3.centdist FROM
         CROSS JOIN LATERAL
             (SELECT st_distance(centers.geom, ykr.geom)/1000 AS centdist
                 FROM centers
-        WHERE (centers.vyoh15 = 10 AND ykr.vyoh15 = 10) OR (centers.vyoh15 = 1 AND ykr.vyoh15 <> 10)
+        WHERE (centers.vyoh = 10 AND ykr.vyoh = 10) OR (centers.vyoh = 1 AND ykr.vyoh <> 10)
         ORDER BY ykr.geom <#> centers.geom
  	 LIMIT 1) AS center) as sq3
 WHERE ykr.xyind = sq3.xyind;

@@ -91,7 +91,7 @@ BEGIN
         /* Luodaan väliaikainen taulu, joka sisältää mm. YKR väestö- ja työpaikkatiedot */
         /* Creating a temporary table with e.g. YKR population and workplace data */
         EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr1 AS SELECT * FROM (SELECT * FROM il_preprocess('''|| aoi ||''', '''|| ykr_v ||''', '''|| ykr_tp ||''')) ykvtp';
-        CREATE INDEX ON ykr1 (vyoh15);
+        CREATE INDEX ON ykr1 (vyoh);
     END IF;
 
     IF targetYear IS NOT NULL THEN
@@ -175,7 +175,7 @@ BEGIN
 
     SELECT array(SELECT sahko_gco2kwh * unnest(kvoima_apu1) + unnest(kvoima_gco2kwh) * unnest(kvoima_foss_osa) * unnest(kvoima_apu2)) INTO gco2kwh_matrix;
 
-    SELECT EXISTS (SELECT 1 FROM ykr1 WHERE vyoh15 = 9993) INTO new_lj;
+    SELECT EXISTS (SELECT 1 FROM ykr1 WHERE vyoh = 9993) INTO new_lj;
 
     --------------------------------------------------------
 
@@ -459,10 +459,10 @@ BEGIN
         sahko_kotitaloudet_tco2 = COALESCE(results.sahko_kotitaloudet_tco2 + NULLIF(pop.sahko_kotitaloudet_co2_as * muunto_massa, 0), 0)
     FROM
         (SELECT ykr1.xyind,
-            SUM((SELECT il_traffic_personal_co2(v_yht, tp_yht, year, 'bussi', centdist, vyoh15, area, scenario, gco2kwh_matrix)) +
-                (SELECT il_traffic_personal_co2(v_yht, tp_yht, year, 'raide', centdist, vyoh15, area, scenario, gco2kwh_matrix)) +
-                (SELECT il_traffic_personal_co2(v_yht, tp_yht, year, 'hlauto', centdist, vyoh15, area, scenario, gco2kwh_matrix)) +
-                (SELECT il_traffic_personal_co2(v_yht, tp_yht, year, 'muu', centdist, vyoh15, area, scenario, gco2kwh_matrix)))
+            SUM((SELECT il_traffic_personal_co2(v_yht, tp_yht, year, 'bussi', centdist, vyoh, area, scenario, gco2kwh_matrix)) +
+                (SELECT il_traffic_personal_co2(v_yht, tp_yht, year, 'raide', centdist, vyoh, area, scenario, gco2kwh_matrix)) +
+                (SELECT il_traffic_personal_co2(v_yht, tp_yht, year, 'hlauto', centdist, vyoh, area, scenario, gco2kwh_matrix)) +
+                (SELECT il_traffic_personal_co2(v_yht, tp_yht, year, 'muu', centdist, vyoh, area, scenario, gco2kwh_matrix)))
             AS hloliikenne_co2,
             SUM((SELECT il_el_household_co2(v_yht, year, NULL, scenario, sahko_gco2kwh, sahko_as)))
             AS sahko_kotitaloudet_co2_as

@@ -50,7 +50,7 @@ SELECT 1::real / laskenta_length INTO step;
 SELECT (calculationYear - baseYear + 1) * step INTO globalweight;
 SELECT 1 - globalweight INTO localweight;
 
-EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr AS SELECT xyind, vyoh15, k_ap_ala, k_ar_ala, k_ak_ala, k_muu_ala, k_poistuma FROM ' || quote_ident(ykr_taulu) || ' WHERE (k_ap_ala IS NOT NULL AND k_ap_ala != 0) OR (k_ar_ala IS NOT NULL AND k_ar_ala != 0) OR (k_ak_ala IS NOT NULL AND k_ak_ala != 0) OR (k_muu_ala IS NOT NULL AND k_muu_ala != 0) OR (k_poistuma IS NOT NULL AND k_poistuma != 0)';
+EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr AS SELECT xyind, vyoh, k_ap_ala, k_ar_ala, k_ak_ala, k_muu_ala, k_poistuma FROM ' || quote_ident(ykr_taulu) || ' WHERE (k_ap_ala IS NOT NULL AND k_ap_ala != 0) OR (k_ar_ala IS NOT NULL AND k_ar_ala != 0) OR (k_ak_ala IS NOT NULL AND k_ak_ala != 0) OR (k_muu_ala IS NOT NULL AND k_muu_ala != 0) OR (k_poistuma IS NOT NULL AND k_poistuma != 0)';
 EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS rak AS SELECT xyind, rakv::int, energiam, rakyht_ala::int, asuin_ala::int, erpien_ala::int, rivita_ala::int, askert_ala::int, liike_ala::int, myymal_ala::int, majoit_ala::int, asla_ala::int, ravint_ala::int, tsto_ala::int, liiken_ala::int, hoito_ala::int, kokoon_ala::int, opetus_ala::int, teoll_ala::int, varast_ala::int, muut_ala::int, teoll_lkm::smallint, varast_lkm::smallint FROM ' || quote_ident(rak_taulu) ||' WHERE rakv != 0 AND xyind IN (SELECT ykr.xyind from ykr)';
 
 /* Haetaan globaalit lämmitysmuotojakaumat laskentavuodelle ja -skenaariolle */
@@ -203,7 +203,7 @@ WHERE sq.xyind = ykr.xyind;
 /* Käyttöalaperusteinen käyttötapajakauma generoidaan rakennusdatasta UZ-vyöhykkeittäin */
 /* Calculate default proportions of building usage for new areas as well */
 CREATE TEMP TABLE IF NOT EXISTS kayttotapajakauma AS 
-SELECT ykr.vyoh15,
+SELECT ykr.vyoh,
 	COALESCE(SUM(r.liike_ala)::real / (SUM(r.liike_ala) + SUM(r.tsto_ala) + SUM(r.liiken_ala) + SUM(r.hoito_ala) + SUM(r.kokoon_ala) + SUM(r.opetus_ala) + SUM(r.teoll_ala) + SUM(r.varast_ala) + SUM(r.muut_ala)),0) as liike_osuus,
 	COALESCE(SUM(r.myymal_ala)::real / (SUM(r.liike_ala) + SUM(r.tsto_ala) + SUM(r.liiken_ala) + SUM(r.hoito_ala) + SUM(r.kokoon_ala) + SUM(r.opetus_ala) + SUM(r.teoll_ala) + SUM(r.varast_ala) + SUM(r.muut_ala)),0) as myymal_osuus,
 	COALESCE(SUM(r.majoit_ala)::real / (SUM(r.liike_ala) + SUM(r.tsto_ala) + SUM(r.liiken_ala) + SUM(r.hoito_ala) + SUM(r.kokoon_ala) + SUM(r.opetus_ala) + SUM(r.teoll_ala) + SUM(r.varast_ala) + SUM(r.muut_ala)),0) as majoit_osuus,
@@ -218,7 +218,7 @@ SELECT ykr.vyoh15,
 	COALESCE(SUM(r.varast_ala)::real / (SUM(r.liike_ala) + SUM(r.tsto_ala) + SUM(r.liiken_ala) + SUM(r.hoito_ala) + SUM(r.kokoon_ala) + SUM(r.opetus_ala) + SUM(r.teoll_ala) + SUM(r.varast_ala) + SUM(r.muut_ala)),0) as varast_osuus,
 	COALESCE(SUM(r.muut_ala)::real / (SUM(r.liike_ala) + SUM(r.tsto_ala) + SUM(r.liiken_ala) + SUM(r.hoito_ala) + SUM(r.kokoon_ala) + SUM(r.opetus_ala) + SUM(r.teoll_ala) + SUM(r.varast_ala) + SUM(r.muut_ala)),0) as muut_osuus
 FROM rak r JOIN ykr ON r.xyind = ykr.xyind
-GROUP BY ykr.vyoh15;
+GROUP BY ykr.vyoh;
 
 UPDATE kayttotapajakauma j SET 
 	liike_osuus = ktj.liike_osuus,
@@ -259,7 +259,7 @@ UPDATE ykr y SET
     varast_osuus = ktj.varast_osuus,
     muut_osuus = ktj.muut_osuus
 FROM kayttotapajakauma ktj
-WHERE y.vyoh15 = ktj.vyoh15;
+WHERE y.vyoh = ktj.vyoh;
 
 /* -- Mikäli käytetään myös ruututason tietoja : 
     (y.liike_osuus IS NULL OR y.liike_osuus = 0) AND

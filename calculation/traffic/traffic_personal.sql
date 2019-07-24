@@ -12,7 +12,7 @@ public.il_traffic_personal_co2(
     year integer, -- Vuosi, jonka perusteella päästöt lasketaan / viitearvot haetaan
     kulkumuoto varchar, 
     centdist integer,
-    vyoh15 integer,
+    vyoh integer,
     area varchar,
     scenario varchar, -- PITKO:n mukainen kehitysskenaario
     gco2kwh_matrix real[], /* Ominaispäästökertoimien pohja */ /* Emission values template */
@@ -49,61 +49,61 @@ BEGIN
 
     EXECUTE 'SELECT hlt FROM aluejaot.alueet WHERE kunta = $1 OR maakunta = $1' INTO hlt_taulu1 USING area;
 
-    EXECUTE 'SELECT ' || kulkumuoto || ' FROM liikenne.hlt_kmmuutos WHERE vyoh15 = $1' INTO kmuoto_km_muutos USING vyoh15;
-    EXECUTE 'SELECT ' || kulkumuoto || ' FROM liikenne.hlt_tposuus WHERE vyoh15 = $1' INTO tposuus USING vyoh15;
+    EXECUTE 'SELECT ' || kulkumuoto || ' FROM liikenne.hlt_kmmuutos WHERE vyoh = $1' INTO kmuoto_km_muutos USING vyoh;
+    EXECUTE 'SELECT ' || kulkumuoto || ' FROM liikenne.hlt_tposuus WHERE vyoh = $1' INTO tposuus USING vyoh;
     
     IF renew THEN
         EXECUTE 'CREATE TEMP TABLE hlt AS SELECT * FROM liikenne.'||hlt_taulu1||'';
         UPDATE hlt SET
         raide = (CASE
-            WHEN hlt.vyoh15 = 1 THEN
+            WHEN hlt.vyoh = 1 THEN
                 raide + bussi * 0.4 + ((jalkapyora + bussi + raide + hlauto + muu) * ((raide +  bussi) / (jalkapyora + bussi + raide + hlauto + muu) + 0.00066 * (year - baseYear)) - raide - bussi)
-            WHEN hlt.vyoh15 = 2 THEN          
+            WHEN hlt.vyoh = 2 THEN          
                 raide + bussi * 0.3 + ((jalkapyora + bussi + raide + hlauto + muu) * ((raide +  bussi) / (jalkapyora + bussi + raide + hlauto + muu) + 0.00033 * (year - baseYear)) - raide - bussi)
-            WHEN hlt.vyoh15 = 3 THEN 
+            WHEN hlt.vyoh = 3 THEN 
                 raide + bussi * 0.20 + ((jalkapyora + bussi + raide + hlauto + muu) * ((raide +  bussi) / (jalkapyora + bussi + raide + hlauto + muu) + 0.00012 * (year - baseYear)) - raide - bussi)
-            WHEN hlt.vyoh15 = 4 OR hlt.vyoh15 = 10 THEN
+            WHEN hlt.vyoh = 4 OR hlt.vyoh = 10 THEN
                 raide + bussi * 0.15 + ((jalkapyora + bussi + raide + hlauto + muu) * ((raide +  bussi) / (jalkapyora + bussi + raide + hlauto + muu) + 0.00012 * (year - baseYear)) - raide - bussi)
-            WHEN hlt.vyoh15 = 837101 OR hlt.vyoh15 = 9993 THEN 
+            WHEN hlt.vyoh = 837101 OR hlt.vyoh = 9993 THEN 
                 raide + bussi * 0.5 + ((jalkapyora + bussi + raide + hlauto + muu) * ((raide +  bussi) / (jalkapyora + bussi + raide + hlauto + muu) + 0.00066 * (year - baseYear)) - raide - bussi)
             ELSE raide
         END),
         bussi = (CASE
-            WHEN hlt.vyoh15 = 1 THEN
+            WHEN hlt.vyoh = 1 THEN
                 bussi * 0.6
-            WHEN hlt.vyoh15 = 2 THEN          
+            WHEN hlt.vyoh = 2 THEN          
                 bussi * 0.7
-            WHEN hlt.vyoh15 = 3 THEN 
+            WHEN hlt.vyoh = 3 THEN 
                 bussi * 0.80
-            WHEN hlt.vyoh15 = 4 OR hlt.vyoh15 = 10 THEN
+            WHEN hlt.vyoh = 4 OR hlt.vyoh = 10 THEN
                 bussi * 0.95
-            WHEN hlt.vyoh15 = 837101 OR hlt.vyoh15 = 9993 THEN 
+            WHEN hlt.vyoh = 837101 OR hlt.vyoh = 9993 THEN 
                 bussi * 0.5
             ELSE bussi
         END),
         hlauto = (CASE
-            WHEN hlt.vyoh15 = 1 THEN
+            WHEN hlt.vyoh = 1 THEN
                 hlauto - ((jalkapyora + bussi + raide + hlauto + muu) * ((raide +  bussi) / (jalkapyora + bussi + raide + hlauto + muu) + 0.00066 * (year - baseYear)) - raide - bussi)
-            WHEN hlt.vyoh15 = 2 THEN          
+            WHEN hlt.vyoh = 2 THEN          
                 hlauto - ((jalkapyora + bussi + raide + hlauto + muu) * ((raide +  bussi) / (jalkapyora + bussi + raide + hlauto + muu) + 0.00033 * (year - baseYear)) - raide - bussi)
-            WHEN hlt.vyoh15 = 3 THEN 
+            WHEN hlt.vyoh = 3 THEN 
                 hlauto - ((jalkapyora + bussi + raide + hlauto + muu) * ((raide +  bussi) / (jalkapyora + bussi + raide + hlauto + muu) + 0.00012 * (year - baseYear)) - raide - bussi)
-            WHEN hlt.vyoh15 = 4 OR hlt.vyoh15 = 10 THEN
+            WHEN hlt.vyoh = 4 OR hlt.vyoh = 10 THEN
                 hlauto - ((jalkapyora + bussi + raide + hlauto + muu) * ((raide +  bussi) / (jalkapyora + bussi + raide + hlauto + muu) + 0.00012 * (year - baseYear)) - raide - bussi)
-            WHEN hlt.vyoh15 = 837101 OR hlt.vyoh15 = 9993 THEN 
+            WHEN hlt.vyoh = 837101 OR hlt.vyoh = 9993 THEN 
                 hlauto - ((jalkapyora + bussi + raide + hlauto + muu) * ((raide +  bussi) / (jalkapyora + bussi + raide + hlauto + muu) + 0.00066 * (year - baseYear)) - raide - bussi)
             ELSE hlauto
         END);
-        EXECUTE 'SELECT ' || kulkumuoto || ' FROM hlt WHERE vyoh15 = $1' INTO kmuoto_hkmvrk USING vyoh15;
+        EXECUTE 'SELECT ' || kulkumuoto || ' FROM hlt WHERE vyoh = $1' INTO kmuoto_hkmvrk USING vyoh;
         DROP TABLE IF EXISTS hlt;
     ELSE 
-        EXECUTE 'SELECT ' || kulkumuoto || ' FROM liikenne.'||hlt_taulu1||' WHERE vyoh15 = $1' INTO kmuoto_hkmvrk USING vyoh15;
+        EXECUTE 'SELECT ' || kulkumuoto || ' FROM liikenne.'||hlt_taulu1||' WHERE vyoh = $1' INTO kmuoto_hkmvrk USING vyoh;
     END IF;
 
     kmuoto_hkmvrk := (CASE
-    WHEN centdist > 2 AND centdist < 10 AND vyoh15 != 4 
+    WHEN centdist > 2 AND centdist < 10 AND vyoh != 4 
         THEN kmuoto_hkmvrk + COALESCE((centdist - 2) * kmuoto_km_muutos, 0)
-    WHEN centdist > 2 AND vyoh15 = 4
+    WHEN centdist > 2 AND vyoh = 4
         THEN(CASE WHEN kmuoto_hkmvrk - COALESCE((centdist - 2) * kmuoto_km_muutos, 0) > 0 THEN kmuoto_hkmvrk - COALESCE((centdist - 2) * kmuoto_km_muutos, 0) ELSE kmuoto_hkmvrk END)
     ELSE kmuoto_hkmvrk END);
 
