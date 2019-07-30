@@ -1,14 +1,46 @@
--- Henkilöliikenne
+/* Henkilöliikenne
 
--- LASKENTAKAAVOJEN TULOSTEN KOOSTAMINEN, PARAMETRIEN POIMINTA TAULUISTA JA LASKENTAKAAVOJEN KUTSUT
+YKR-ruudun asukkaiden liikkumisen kasvihuonekaasupäästöjen laskennan kulkumuodot jaetaan valtakunnallisen henkilöliikennetutkimuksen mukaisesti
+jalankulkuun ja pyöräilyyn (jalkapyora), linja-autoihin (bussi), raideliikenteeseen (raide), henkilöautoihin (hlauto) ja muihin liikkumismuotoihin (muu).
 
-/* Asuinpaikan mukaan jyvitettävien co2-päästöjen laskenta */
-/* Esimerkkikutsu: SELECT * FROM il_hloliikenne_co2(134, 521, 2018, 'bussi', 6.7, 3, 'Tampere', 'wem', 'em', 'hankinta'); */
+Muiden liikkumismuotojen ryhmä sisältää taksi-, koulutaksi-, invataksi- ja kutsutaksimatkat sekä henkilöliikenteen matkat kuorma-autoilla,
+mopoilla, moposkoottereilla, moottoripyörillä, kevytmoottoripyörillä, mopoautoilla, moottorikelkoilla, mönkijöillä, golfautoilla, traktoreilla,
+työkoneilla, hälytysajoneuvoilla, moottori-, soutu- tai purjeveneellä, kanooteilla, kumiveneillä, jollilla, laivalla, autolautalla, pika-aluksella,
+hevosella, koiravaljakolla tai muulla eläinkyydillä sekä suksilla, rullaluistimilla, rullasuksilla tai muulla liikunnallisella tavalla.
+
+YKR-ruudussa asuvan väestön kulkumuotojen suoritteet apliikenne_hkm [hkm/a] ovat laskentavuonna
+
+    apliikenne_hkm = v_yht * ap_kmuoto_hkmvrk * muunto_vuosi
+
+YKR-ruudussa työssä käyvien henkilöiden kulkumuotojen suoritteet tpliikenne_hkm [hkm/a] saadaan kaavalla
+
+    tpliikenne_hkm = tp_yht * tp_kmuoto_hkmvrk * muunto_vuosi 
+
+Kulkumuotojen käyttövoimien suoriteosuuksilla painotetut keskikulutukset [kWh/km] ovat laskentavuonna
+
+    kmuoto_kwhkm = kmuoto_kvoima_jakauma * kvoima_kwhkm
+
+YKR-ruudun asukkaiden ja siellä työssäkäyvien kulkumuotojen laskentavuonna tarvitsemat energiamäärät [kWh/a] lasketaan kaavoilla
+
+    apliikenne_kwh = apliikenne_hkm / apliikenne_kuormitus * kmuoto_kwhkm
+    tpliikenne_kwh = tpliikenne_hkm / tpliikenne_kuormitus * kmuoto_kwhkm
+
+Kulkumuotojen kasvihuonekaasupäästöjen keskimääräiset ominaispäästökertoimet [gCO2-ekv/kWh] määritellään käyttövoimien ominaispäästökertoimien suoriteosuuksilla painotettuna keskiarvona huomioiden samalla niiden bio-osuudet:
+
+    kmuoto_gco2kwh = kmuoto_kvoima_jakauma * (sahko_gco2kwh * kvoima_apu1 + kvoima_foss_osa * kvoima_gco2kwh * kvoima_apu2)
+
+YKR-ruudun asukkaiden ja ruudussa työssä käyvien liikkumiseen käyttämien eri kulkumuotojen aiheuttamat kasvihuonekaasupäästöt apliikenne_co2 ja tpliikenne_co2 [CO2-ekv/a] ovat laskentavuonna
+
+    apliikenne_co2 = apliikenne_kwh * kmuoto_gco2kwh
+    tpliikenne_co2 = tpliikenne_kwh * kmuoto_gco2kwh
+
+*/
+
 DROP FUNCTION IF EXISTS il_traffic_personal_co2;
 CREATE OR REPLACE FUNCTION
 public.il_traffic_personal_co2(
-    v_yht integer, -- Väestö yhteensä
-    tp_yht integer, -- Väestö yhteensä 
+    v_yht integer, --   YKR-ruudun asukasmäärä laskentavuonna [as]. Lukuarvo riippuu laskentavuodesta.
+    tp_yht integer, -- on YKR-ruudun työpaikkojen määrä laskentavuonna [as]. Lukuarvo riippuu laskentavuodesta.
     year integer, -- Vuosi, jonka perusteella päästöt lasketaan / viitearvot haetaan
     kulkumuoto varchar, 
     centdist integer,
@@ -25,18 +57,18 @@ DECLARE
     hlt_taulu1 varchar;
     tposuus real;
     kmuoto_km_muutos real;
-    kmuoto_gco2kwh real[];
+    kmuoto_gco2kwh real[]; -- Kulkumuotojen kasvihuonekaasupäästöjen keskimääräiset ominaispäästökertoimet [gCO2-ekv/kWh] 
     
     kmuoto_hkmvrk real;
-    kmuoto_kvoima_jakauma real[];
-    kvoima_kwhkm real[];
+    kmuoto_kvoima_jakauma real[]; -- Kulkumuotojen käyttövoimajakaumaa. Arvot riippuvat taustaskenaariosta, laskentavuodesta, kulkumuodosta ja käyttövoimasta.
+    kvoima_kwhkm real[]; -- Käyttövoimien energian keskikulutus [kWh/km]. Arvot riippuvat taustaskenaariosta, laskentavuodesta, kulkumuodosta ja käyttövoimasta.
     kmuoto_kvoima_mult_res real[];
 
-    apliikenne_kuormitus real;
-    tpliikenne_kuormitus real;
-    kmuoto_kwhkm real;
-    apliikenne_hkm real;
-    tpliikenne_hkm real;
+    apliikenne_kuormitus real; -- Asukkaiden kulkumuotojen keskimääräiset kuormitukset laskentavuonna [hkm/km]. Arvo riippuu taustaskenaariosta, laskentavuodesta ja kulkumuodosta
+    tpliikenne_kuormitus real; -- Työssä käyvien kulkumuotojen keskimääräiset kuormitukset laskentavuonna [hkm/km]. Arvo riippuu taustaskenaariosta, laskentavuodesta ja kulkumuodosta
+    kmuoto_kwhkm real; -- Energian keskikulutus käyttövoimittain [kWh/km]. Lukuarvo riippuu taustaskenaariosta, laskentavuodesta, kulkumuodosta ja käyttövoimasta.
+    apliikenne_hkm real; -- Asukkaiden kulkumuodoilla jalkapyora, bussi, raide, hlauto ja muu vuorokauden aikana tekemien matkojen keskimääräiset pituudet henkilökilometreinä [hkm/as/vrk]. Arvo riippuu laskentavuodesta, kulkumuodosta, yhdyskuntarakenteen vyöhykkeestä ja tarkastelualueesta.
+    tpliikenne_hkm real; --  Ruudussa työssä käyvien kulkumuodoilla jalkapyora, bussi, raide, hlauto ja muu vuorokauden aikana tekemien matkojen keskimääräiset pituudet henkilökilometreinä [hkm/as/vrk]. Arvo riippuu laskentavuodesta, kulkumuodosta, yhdyskuntarakenteen vyöhykkeestä ja  ja tarkastelualueesta.
     hloliikenne_kwh real;
     hloliikenne_co2 real[];
 BEGIN
@@ -107,6 +139,7 @@ BEGIN
         THEN(CASE WHEN kmuoto_hkmvrk - COALESCE((centdist - 2) * kmuoto_km_muutos, 0) > 0 THEN kmuoto_hkmvrk - COALESCE((centdist - 2) * kmuoto_km_muutos, 0) ELSE kmuoto_hkmvrk END)
     ELSE kmuoto_hkmvrk END);
 
+    /* muunto vuorokausisuoritteesta vuositasolle [vrk/a] (365) */
     SELECT v_yht * (1-tposuus) * 365 * kmuoto_hkmvrk INTO apliikenne_hkm;
     SELECT tp_yht * tposuus * 365 * kmuoto_hkmvrk INTO tpliikenne_hkm; -- Tilastojen mukaan tehollisia työpäiviä keskimäärin noin 228-230 per vuosi
 
