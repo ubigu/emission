@@ -38,7 +38,7 @@ DECLARE
 BEGIN
 
 EXECUTE 'SELECT aoi.km2hm2 FROM aluejaot.alueet aoi WHERE kunta = $1 OR maakunta = $1' INTO km2hm2 USING area;
-CREATE TEMP TABLE uz AS SELECT * FROM aluejaot."YKRVyohykkeet2015";
+CREATE TEMP TABLE uz AS SELECT * FROM aluejaot."ykr_vyohykkeet";
     CREATE INDEX ON uz USING GIST (geom);
 EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr AS SELECT * FROM ' || ykr_taulu;
     CREATE INDEX ON ykr USING GIST (geom);
@@ -163,7 +163,6 @@ CREATE TEMP TABLE IF NOT EXISTS keskusta_alueet_centroid AS
 ALTER TABLE keskusta_alueet_centroid
     ALTER COLUMN geom TYPE geometry(Point, 3067) USING ST_CENTROID(geom);
 
-    
 /* Poistetaan ylimääräiset / virheelliset keskustat */
 DELETE FROM keskusta_alueet_centroid
     WHERE keskustyyp IN ('Kaupunkiseudun pieni alakeskus');
@@ -196,11 +195,12 @@ ON q.g2=p2.id;
 /* Lisätään uusia keskuksia keskusverkkoon vain mikäli käyttäjä on tällaisia syöttänyt! */
 IF kv_taulu IS NOT NULL THEN
     INSERT INTO keskusverkko
-    SELECT id, st_force2d((ST_DUMP(suunnitelma.geom)).geom) as geom, k_ktyyp AS keskustyyp, NULL, k_knimi AS keskusnimi
+    SELECT (SELECT MAX(k.id) FROM tests.keskusverkko k) + row_number() over (order by geom desc),
+        st_force2d((ST_DUMP(suunnitelma.geom)).geom) as geom, k_ktyyp AS keskustyyp, NULL, k_knimi AS keskusnimi
     FROM kv suunnitelma
     WHERE NOT EXISTS (
         SELECT 1
-        FROM kv keskustat
+        FROM keskusverkko keskustat
         WHERE ST_DWithin(suunnitelma.geom, keskustat.geom, 1500)
     ) AND suunnitelma.k_ktyyp = 'Kaupunkiseudun iso alakeskus'
     AND (COALESCE(suunnitelma.k_kalkuv, baseYear) + (COALESCE(suunnitelma.k_kvalmv,targetYear) - COALESCE(suunnitelma.k_kalkuv,baseYear))/2 >= calculationYear);
