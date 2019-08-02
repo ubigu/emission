@@ -35,7 +35,7 @@ RETURNS TABLE(
     sum_liikenne_tco2 real,
     sum_sahko_tco2 real,
     sum_rakentaminen_tco2 real,
-    vuosi smallint,
+    vuosi date,
     geom geometry(MultiPolygon, 3067))
 AS $$
 DECLARE
@@ -486,11 +486,11 @@ BEGIN
         ADD COLUMN IF NOT EXISTS sum_liikenne_tco2 real,
         ADD COLUMN IF NOT EXISTS sum_sahko_tco2 real,
         ADD COLUMN IF NOT EXISTS sum_rakentaminen_tco2 real,
-        ADD COLUMN IF NOT EXISTS vuosi smallint,
+        ADD COLUMN IF NOT EXISTS vuosi date,
         ADD COLUMN IF NOT EXISTS geom geometry(MultiPolygon, 3067);
 
     UPDATE results r SET
-        vuosi = year,
+        vuosi = to_date(year::varchar, 'YYYY'),
         sum_yhteensa_tco2 = r.tilat_vesi_tco2 + r.tilat_lammitys_tco2 + r.tilat_jaahdytys_tco2 + r.sahko_kiinteistot_tco2 + r.sahko_kotitaloudet_tco2 +
         r.sahko_palv_tco2 + r.sahko_tv_tco2 + r.liikenne_hlo_tco2 + r.liikenne_tv_tco2 + r.liikenne_palv_tco2 + r.rak_korjaussaneeraus_tco2 + r.rak_purku_tco2 + r.rak_uudis_tco2,
         sum_lammonsaato_tco2 = r.tilat_vesi_tco2 + r.tilat_lammitys_tco2 + r.tilat_jaahdytys_tco2,
