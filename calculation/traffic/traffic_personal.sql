@@ -14,7 +14,7 @@ YKR-ruudussa asuvan väestön kulkumuotojen suoritteet apliikenne_hkm [hkm/a] ov
 
 YKR-ruudussa työssä käyvien henkilöiden kulkumuotojen suoritteet tpliikenne_hkm [hkm/a] saadaan kaavalla
 
-    tpliikenne_hkm = tp_yht * tp_kmuoto_hkmvrk * muunto_vuosi 
+    tpliikenne_hkm = tp_yht * tp_kmuoto_hkmvrk * muunto_vuosi
 
 Kulkumuotojen käyttövoimien suoriteosuuksilla painotetut keskikulutukset [kWh/km] ovat laskentavuonna
 
@@ -150,11 +150,11 @@ BEGIN
 
     -------------------------------------------------------------------------------------------
     /* Kulkumuotojen käyttövoimien suoriteosuuksilla painotetut keskikulutukset */
-    SELECT array[kvoima_bensiini, kvoima_etanoli, kvoima_diesel, kvoima_kaasu, kvoima_phev_b, kvoima_phev_d, kvoima_ev, kvoima_vety]
+    SELECT array[bensiini, etanoli, diesel, kaasu, phev_b, phev_d, ev, kv_muu]
         INTO kmuoto_kvoima_jakauma
         FROM liikenne.kvoima_kmuoto_jakauma
         WHERE vuosi = year AND skenaario = scenario AND kmuoto = kulkumuoto;
-    SELECT array[kvoima_bensiini, kvoima_etanoli, kvoima_diesel, kvoima_kaasu, kvoima_phev_b, kvoima_phev_d, kvoima_ev, kvoima_vety]
+    SELECT array[bensiini, etanoli, diesel, kaasu, phev_b, phev_d, ev, kv_muu]
         INTO kvoima_kwhkm
         FROM liikenne.kvoima_kwhkm
         WHERE vuosi = year AND skenaario = scenario AND kmuoto = kulkumuoto;
