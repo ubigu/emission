@@ -195,7 +195,7 @@ ON q.g2=p2.id;
 /* Lisätään uusia keskuksia keskusverkkoon vain mikäli käyttäjä on tällaisia syöttänyt! */
 IF kv_taulu IS NOT NULL THEN
     INSERT INTO keskusverkko
-    SELECT (SELECT MAX(k.id) FROM keskusverkko k) + row_number() over (order by geom desc),
+    SELECT (SELECT MAX(k.id) FROM keskusverkko k) + row_number() over (order by suunnitelma.geom desc),
         st_force2d((ST_DUMP(suunnitelma.geom)).geom) as geom, k_ktyyp AS keskustyyp, NULL, k_knimi AS keskusnimi
     FROM kv suunnitelma
     WHERE NOT EXISTS (
