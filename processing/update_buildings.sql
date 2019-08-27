@@ -38,8 +38,8 @@ EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr AS SELECT xyind, k_ap_ala, k_ar_ala
 
 /* Lasketaan teollisuus- ja varastorakennusten koot */
 /* Calculating the sizes of industrial and storage buildings */
-SELECT SUM(rak.teoll_ala)/SUM(rak.teoll_lkm) FROM rak into teoll_koko;
-SELECT SUM(rak.varast_ala)/SUM(rak.varast_lkm) FROM rak into varast_koko;
+SELECT COALESCE(SUM(rak.teoll_ala)/NULLIF(SUM(rak.teoll_lkm),0),1400) FROM rak into teoll_koko; -- Fallback-vakio tilastollinen
+SELECT COALESCE(SUM(rak.varast_ala)/NULLIF(SUM(rak.varast_lkm),0),1250) FROM rak into varast_koko; --Fallback-vakio tilastollinen
 
 /* Lisätään puuttuvat sarakkeet väliaikaiseen YKR-dataan */
 /* Adding new columns into the temporary YKR data */
