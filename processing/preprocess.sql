@@ -5,7 +5,7 @@ public.il_preprocess(
     ykr_tp text -- YKR-työpaikkadata | YKR workplace data
 )
 RETURNS TABLE (
-    geom geometry,
+    geom geometry(MultiPolygon, 3067),
     xyind varchar,
     vyoh integer,
     centdist integer,
