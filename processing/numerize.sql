@@ -1,3 +1,4 @@
+DROP FUNCTION IF EXISTS public.il_numerize;
 CREATE OR REPLACE FUNCTION
 public.il_numerize(
     ykr_taulu text,
@@ -16,15 +17,15 @@ RETURNS TABLE (
     centdist integer,
     v_yht integer,
     tp_yht integer,
-    k_ap_ala float,
-    k_ar_ala float,
-    k_ak_ala float,
-    k_muu_ala float,
+    k_ap_ala real,
+    k_ar_ala real,
+    k_ak_ala real,
+    k_muu_ala real,
     k_tp_yht integer,
-    k_poistuma float,
-    maa_ha float
-    --alueteho float,
-   -- alueteho_muutos float
+    k_poistuma real,
+    maa_ha real
+    --alueteho real,
+   -- alueteho_muutos real
 ) AS $$
 DECLARE
     km2hm2 real;
@@ -37,21 +38,26 @@ DECLARE
     
 BEGIN
 
-EXECUTE 'SELECT aoi.km2hm2 FROM aluejaot.alueet aoi WHERE kunta = $1 OR maakunta = $1' INTO km2hm2 USING area;
+SELECT aoi.km2hm2 FROM aluejaot.alueet aoi WHERE kunta = area OR maakunta = area INTO km2hm2;
+
 CREATE TEMP TABLE uz AS SELECT * FROM aluejaot."ykr_vyohykkeet";
     CREATE INDEX ON uz USING GIST (geom);
+
 EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr AS SELECT * FROM ' || ykr_taulu;
     CREATE INDEX ON ykr USING GIST (geom);
+
 EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS kt AS SELECT * FROM ' || quote_ident(kt_taulu);
     SELECT geometrytype(kt.geom) from kt into kt_gt;
     EXECUTE 'ALTER TABLE kt ALTER COLUMN geom TYPE geometry('|| kt_gt ||', 3067) USING ST_force2d(ST_Transform(geom, 3067))';
     CREATE INDEX ON kt USING GIST (geom);
+
 IF kv_taulu IS NOT NULL THEN
     EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS kv AS SELECT * FROM ' || quote_ident(kv_taulu);
     SELECT geometrytype(kv.geom) from kv into kv_gt;
     EXECUTE 'ALTER TABLE kv ALTER COLUMN geom TYPE geometry('|| kv_gt ||', 3067) USING ST_force2d(ST_Transform(geom, 3067))';
     CREATE INDEX ON kv USING GIST (geom);
 END IF;
+
 IF jl_taulu IS NOT NULL THEN
     EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS jl AS SELECT * FROM ' || quote_ident(jl_taulu);
     SELECT geometrytype(jl.geom) from jl into jl_gt;
@@ -64,139 +70,147 @@ SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = kt_ta
 SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = kt_taulu AND column_name='k_valmisv') INTO valmisv_exists;
 
 ALTER TABLE ykr
-    ADD COLUMN IF NOT EXISTS k_ap_ala float default 0,
-    ADD COLUMN IF NOT EXISTS k_ar_ala float default 0,
-    ADD COLUMN IF NOT EXISTS k_ak_ala float default 0,
-    ADD COLUMN IF NOT EXISTS k_muu_ala float default 0,
+    ADD COLUMN IF NOT EXISTS k_ap_ala real default 0,
+    ADD COLUMN IF NOT EXISTS k_ar_ala real default 0,
+    ADD COLUMN IF NOT EXISTS k_ak_ala real default 0,
+    ADD COLUMN IF NOT EXISTS k_muu_ala real default 0,
     ADD COLUMN IF NOT EXISTS k_tp_yht integer default 0,
-    ADD COLUMN IF NOT EXISTS k_poistuma float default 0,
-    ADD COLUMN IF NOT EXISTS maa_ha float default 0,
-    ADD COLUMN IF NOT EXISTS alueteho float default 0,
-    ADD COLUMN IF NOT EXISTS alueteho_muutos float default 0;
+    ADD COLUMN IF NOT EXISTS k_poistuma real default 0,
+    ADD COLUMN IF NOT EXISTS maa_ha real default 0,
+    ADD COLUMN IF NOT EXISTS alueteho real default 0,
+    ADD COLUMN IF NOT EXISTS alueteho_muutos real default 0;
 
 /* Lasketaan käyttötarkoitusalueille pinta-alat hehtaareina */
-ALTER TABLE kt 
-    ADD COLUMN IF NOT EXISTS area_ha float default 0;
-UPDATE kt
-    SET area_ha = ST_AREA(kt.geom)/10000;
+ALTER TABLE kt ADD COLUMN IF NOT EXISTS area_ha real default 0;
+UPDATE kt SET area_ha = ST_AREA(kt.geom)/10000;
 
 /* Lasketaan käyttötarkoitusalueilta numeeriset arvot YKR-ruuduille. Tällä hetkellä tämä tehdään lineaarisesti. Seuraavissa kehitysversioissa tarkastellaan arvojen painotettua jakamista. */
 IF aloitusv_exists AND valmisv_exists THEN
     UPDATE ykr
     SET k_ap_ala = (
-        SELECT SUM(ST_Area(ST_Intersection(ykr.geom, kt.geom)) / ST_Area(kt.geom) * (CASE WHEN kt.k_ap_ala < 0 THEN 0 ELSE kt.k_ap_ala / (COALESCE(kt.k_valmisv,targetYear) - COALESCE(kt.k_aloitusv,baseYear)) END))
-        FROM kt WHERE ST_Intersects(ykr.geom, kt.geom) AND COALESCE(kt.k_aloitusv,baseYear) <= calculationYear
+        SELECT SUM(ST_Area(ST_Intersection(ykr.geom, kt.geom)) / (kt.area_ha * 10000) * (CASE WHEN kt.k_ap_ala <= 0 THEN 0 ELSE kt.k_ap_ala / (COALESCE(kt.k_valmisv,targetYear) - COALESCE(kt.k_aloitusv,baseYear) + 1) END))
+        FROM kt WHERE ST_Intersects(ykr.geom, kt.geom) AND COALESCE(kt.k_aloitusv,baseYear) <= calculationYear AND COALESCE(kt.k_valmisv,targetYear) >= calculationYear
     ), k_ar_ala = (
-        SELECT SUM(ST_Area(ST_Intersection(ykr.geom, kt.geom)) / ST_Area(kt.geom) * (CASE WHEN kt.k_ar_ala < 0 THEN 0 ELSE kt.k_ar_ala / (COALESCE(kt.k_valmisv,targetYear) - COALESCE(kt.k_aloitusv,baseYear)) END))
-        FROM kt WHERE ST_Intersects(ykr.geom, kt.geom) AND COALESCE(kt.k_aloitusv,baseYear) <= calculationYear
+        SELECT SUM(ST_Area(ST_Intersection(ykr.geom, kt.geom)) / (kt.area_ha * 10000) * (CASE WHEN kt.k_ar_ala <= 0 THEN 0 ELSE kt.k_ar_ala / (COALESCE(kt.k_valmisv,targetYear) - COALESCE(kt.k_aloitusv,baseYear) + 1) END))
+        FROM kt WHERE ST_Intersects(ykr.geom, kt.geom) AND COALESCE(kt.k_aloitusv,baseYear) <= calculationYear AND COALESCE(kt.k_valmisv,targetYear) >= calculationYear
     ), k_ak_ala = (
-        SELECT SUM(ST_Area(ST_Intersection(ykr.geom, kt.geom)) / ST_Area(kt.geom) * (CASE WHEN kt.k_ak_ala < 0 THEN 0 ELSE kt.k_ak_ala / (COALESCE(kt.k_valmisv,targetYear) - COALESCE(kt.k_aloitusv,baseYear)) END))
-        FROM kt WHERE ST_Intersects(ykr.geom, kt.geom) AND COALESCE(kt.k_aloitusv,baseYear) <= calculationYear
+        SELECT SUM(ST_Area(ST_Intersection(ykr.geom, kt.geom)) / (kt.area_ha * 10000) * (CASE WHEN kt.k_ak_ala <= 0 THEN 0 ELSE kt.k_ak_ala / (COALESCE(kt.k_valmisv,targetYear) - COALESCE(kt.k_aloitusv,baseYear) + 1) END))
+        FROM kt WHERE ST_Intersects(ykr.geom, kt.geom) AND COALESCE(kt.k_aloitusv,baseYear) <= calculationYear AND COALESCE(kt.k_valmisv,targetYear) >= calculationYear
     ), k_muu_ala = (
-        SELECT SUM(ST_Area(ST_Intersection(ykr.geom, kt.geom)) / ST_Area(kt.geom) * (CASE WHEN kt.k_muu_ala < 0 THEN 0 ELSE kt.k_muu_ala / (COALESCE(kt.k_valmisv,targetYear) - COALESCE(kt.k_aloitusv,baseYear)) END))
-        FROM kt WHERE ST_Intersects(ykr.geom, kt.geom) AND COALESCE(kt.k_aloitusv,baseYear) <= calculationYear
+        SELECT SUM(ST_Area(ST_Intersection(ykr.geom, kt.geom)) / (kt.area_ha * 10000) * (CASE WHEN kt.k_muu_ala <= 0 THEN 0 ELSE kt.k_muu_ala / (COALESCE(kt.k_valmisv,targetYear) - COALESCE(kt.k_aloitusv,baseYear) + 1) END))
+        FROM kt WHERE ST_Intersects(ykr.geom, kt.geom) AND COALESCE(kt.k_aloitusv,baseYear) <= calculationYear AND COALESCE(kt.k_valmisv,targetYear) >= calculationYear
     ), k_tp_yht = (
-        SELECT SUM(ST_Area(ST_Intersection(ykr.geom, kt.geom)) / ST_Area(kt.geom) * kt.k_tp_yht / (COALESCE(kt.k_valmisv,targetYear) - COALESCE(kt.k_aloitusv,baseYear)))
-        FROM kt WHERE ST_Intersects(ykr.geom, kt.geom) AND COALESCE(kt.k_aloitusv,baseYear) <= calculationYear
+        SELECT SUM(ST_Area(ST_Intersection(ykr.geom, kt.geom)) / (kt.area_ha * 10000) * kt.k_tp_yht / (COALESCE(kt.k_valmisv,targetYear) - COALESCE(kt.k_aloitusv,baseYear) + 1))
+        FROM kt WHERE ST_Intersects(ykr.geom, kt.geom) AND COALESCE(kt.k_aloitusv,baseYear) <= calculationYear AND COALESCE(kt.k_valmisv,targetYear) >= calculationYear
     );
         IF poistuma_exists THEN
             UPDATE ykr SET k_poistuma = (
-                SELECT SUM(ST_Area(ST_Intersection(ykr.geom, kt.geom)) / ST_Area(kt.geom) *
-                (CASE WHEN kt.k_poistuma < 0 THEN kt.k_poistuma / (COALESCE(kt.k_valmisv,targetYear) - COALESCE(kt.k_aloitusv,baseYear)) * (-1) ELSE kt.k_poistuma / (COALESCE(kt.k_valmisv,targetYear) - COALESCE(kt.k_aloitusv,baseYear)) END))
-                FROM kt WHERE ST_Intersects(ykr.geom, kt.geom) AND COALESCE(kt.k_aloitusv,baseYear) <= calculationYear
+                SELECT SUM(ST_Area(ST_Intersection(ykr.geom, kt.geom)) / (kt.area_ha * 10000) *
+                (CASE WHEN kt.k_poistuma < 0 THEN kt.k_poistuma / (COALESCE(kt.k_valmisv,targetYear) - COALESCE(kt.k_aloitusv,baseYear) + 1) * (-1) ELSE kt.k_poistuma / (COALESCE(kt.k_valmisv,targetYear) - COALESCE(kt.k_aloitusv,baseYear) + 1) END))
+                FROM kt WHERE ST_Intersects(ykr.geom, kt.geom) AND COALESCE(kt.k_aloitusv,baseYear) <= calculationYear AND COALESCE(kt.k_valmisv,targetYear) >= calculationYear
             );
+        ELSE
+            /* DUMMY for default demolition rate */
+            UPDATE ykr SET k_poistuma = 999999;
         END IF;
 ELSE 
     UPDATE ykr
     SET k_ap_ala = (
-        SELECT SUM(ST_Area(ST_Intersection(ykr.geom, kt.geom)) / ST_Area(kt.geom) * (CASE WHEN kt.k_ap_ala < 0 THEN 0 ELSE kt.k_ap_ala / (targetYear - baseYear) END))
+        SELECT SUM(ST_Area(ST_Intersection(ykr.geom, kt.geom)) / (kt.area_ha * 10000) * (CASE WHEN kt.k_ap_ala <= 0 THEN 0 ELSE kt.k_ap_ala / (targetYear - baseYear + 1) END))
         FROM kt WHERE ST_Intersects(ykr.geom, kt.geom) AND baseYear <= calculationYear
     ), k_ar_ala = (
-        SELECT SUM(ST_Area(ST_Intersection(ykr.geom, kt.geom)) / ST_Area(kt.geom) * (CASE WHEN kt.k_ar_ala < 0 THEN 0 ELSE kt.k_ar_ala / (targetYear - baseYear) END))
+        SELECT SUM(ST_Area(ST_Intersection(ykr.geom, kt.geom)) / (kt.area_ha * 10000) * (CASE WHEN kt.k_ar_ala <= 0 THEN 0 ELSE kt.k_ar_ala / (targetYear - baseYear + 1) END))
         FROM kt WHERE ST_Intersects(ykr.geom, kt.geom) AND baseYear <= calculationYear
     ), k_ak_ala = (
-        SELECT SUM(ST_Area(ST_Intersection(ykr.geom, kt.geom)) / ST_Area(kt.geom) * (CASE WHEN kt.k_ak_ala < 0 THEN 0 ELSE kt.k_ak_ala / (targetYear - baseYear) END))
+        SELECT SUM(ST_Area(ST_Intersection(ykr.geom, kt.geom)) / (kt.area_ha * 10000) * (CASE WHEN kt.k_ak_ala <= 0 THEN 0 ELSE kt.k_ak_ala / (targetYear - baseYear + 1) END))
         FROM kt WHERE ST_Intersects(ykr.geom, kt.geom) AND baseYear <= calculationYear
     ), k_muu_ala = (
-        SELECT SUM(ST_Area(ST_Intersection(ykr.geom, kt.geom)) / ST_Area(kt.geom) * (CASE WHEN kt.k_muu_ala < 0 THEN 0 ELSE kt.k_muu_ala / (targetYear - baseYear) END))
+        SELECT SUM(ST_Area(ST_Intersection(ykr.geom, kt.geom)) / (kt.area_ha * 10000) * (CASE WHEN kt.k_muu_ala <= 0 THEN 0 ELSE kt.k_muu_ala / (targetYear - baseYear + 1) END))
         FROM kt WHERE ST_Intersects(ykr.geom, kt.geom) AND baseYear <= calculationYear
     ), k_tp_yht = (
-        SELECT SUM(ST_Area(ST_Intersection(ykr.geom, kt.geom)) / ST_Area(kt.geom) * (kt.k_tp_yht / (targetYear - baseYear)))
+        SELECT SUM(ST_Area(ST_Intersection(ykr.geom, kt.geom)) / (kt.area_ha * 10000) * (kt.k_tp_yht / (targetYear - baseYear + 1)))
         FROM kt WHERE ST_Intersects(ykr.geom, kt.geom) AND baseYear <= calculationYear
     );
         IF poistuma_exists THEN
             UPDATE ykr SET k_poistuma = (
-                SELECT SUM(ST_Area(ST_Intersection(ykr.geom, kt.geom)) / ST_Area(kt.geom) * (CASE WHEN kt.k_poistuma < 0 THEN kt.k_poistuma / (targetYear - baseYear) * (-1) ELSE kt.k_poistuma / (targetYear - baseYear) END))
+                SELECT SUM(ST_Area(ST_Intersection(ykr.geom, kt.geom)) / (kt.area_ha * 10000) * (CASE WHEN kt.k_poistuma < 0 THEN kt.k_poistuma / (targetYear - baseYear + 1) * (-1) ELSE kt.k_poistuma / (targetYear - baseYear + 1) END))
                 FROM kt WHERE ST_Intersects(ykr.geom, kt.geom) AND baseYear <= calculationYear
             );
+        ELSE
+            UPDATE ykr SET k_poistuma = 999999;
         END IF;
 END IF;
 
 
-/* Haetaan ruudukolle nykyisen maanpeitteen mukaiset maapinta-alatiedot */
-UPDATE ykr SET maa_ha = clc.maa_ha FROM aluejaot."YKR_CLC2018" clc WHERE clc.xyind = ykr.xyind;
-
-/*  
+/*  Haetaan ruudukolle nykyisen maanpeitteen mukaiset maapinta-alatiedot.
     Päivitetään mahdolliset ranta- ja vesialueiden täytöt maa_ha -sarakkeeseen.
     Maa_ha -arvoksi täytöille asetetaan 5.9, joka on rakennettujen ruutujen keskimääräinen maa-ala.
     Tässä oletetaan, että jos alle 20% ruudusta (1.25 ha) on nykyisin maata, ja alueelle rakennetaan vuodessa yli 200 neliötä kerrostaloja,
     tehdään täyttöjä (laskettu 20%:lla keskimääräisestä n. 10000 m2 rakennusten pohja-alasta per ruutu, jaettuna 10 v. toteutusajalle).
-    Lasketaan samalla aluetehokkuuden muutos ja päivitetään aluetehokkuus.
-*/
+    Lasketaan samalla aluetehokkuuden muutos ja päivitetään aluetehokkuus. */
 
-UPDATE ykr SET maa_ha = 5.9 WHERE ykr.maa_ha < 1.25 AND ykr.k_ak_ala >= 200;
+UPDATE ykr SET maa_ha = CASE WHEN clc.maa_ha < 1.25 AND ykr.k_ak_ala >= 200 THEN 5.9 ELSE clc.maa_ha END
+FROM aluejaot."YKR_CLC2018" clc WHERE clc.xyind = ykr.xyind;
+
 UPDATE ykr SET alueteho_muutos = (CASE WHEN ykr.maa_ha != 0 THEN (COALESCE(ykr.k_ap_ala,0) + COALESCE(ykr.k_ar_ala,0) + COALESCE(ykr.k_ak_ala,0) + COALESCE(ykr.k_muu_ala,0)) / (10000 * ykr.maa_ha) ELSE 0 END);
 UPDATE ykr SET alueteho = (CASE WHEN COALESCE(ykr.alueteho,0) + COALESCE(ykr.alueteho_muutos,0) > 0 THEN COALESCE(ykr.alueteho,0) + COALESCE(ykr.alueteho_muutos,0) ELSE 0 END);
 
 /* Lasketaan väestön lisäys asumisväljyyden avulla. 1.25 = kerroin kerrosalasta huoneistoalaksi. */
 UPDATE ykr SET
-    v_yht = ykr.v_yht + (ykr.k_ap_ala / av.erpien + ykr.k_ar_ala / av.rivita + ykr.k_ak_ala / av.askert) / COALESCE(km2hm2, 1.25),
-    tp_yht = ykr.tp_yht + ykr.k_tp_yht
+    v_yht = COALESCE(ykr.v_yht, 0) +
+        (
+            COALESCE(ykr.k_ap_ala, 0)::real / COALESCE(av.erpien,38)::real +
+            COALESCE(ykr.k_ar_ala, 0)::real / COALESCE(av.rivita,35.5)::real +
+            COALESCE(ykr.k_ak_ala, 0)::real / COALESCE(av.askert,35)::real
+        ) / COALESCE(km2hm2, 1.25)::real,
+    tp_yht = COALESCE(ykr.tp_yht,0) + COALESCE(ykr.k_tp_yht,0)
     FROM rakymp."asumisvaljyys" av WHERE av.vuosi = calculationYear AND av.alue = area;
 
-/* KESKUSVERKON PÄIVITTÄMINEN */ -- Tähän voi myöhemmin lisätä switchin, joka laskee ensimmäiset 2 vaihetta vain ensimmäiselle vuodelle. Testausta varten tällä hetkellä näin ei ole.
-/* Luodaan väliaikainen taso valtakunnallisesta keskusta-alueaineistosta */
-CREATE TEMP TABLE IF NOT EXISTS keskusta_alueet_centroid AS
-    SELECT * FROM aluejaot."KeskustaAlueet";
+/*  KESKUSVERKON PÄIVITTÄMINEN
+    Luodaan väliaikainen taso valtakunnallisesta keskusta-alueaineistosta
+    Poistetaan ylimääräiset / virheelliset keskustat
+    Muutetaan valtakunnallinen keskusta-alueaineisto keskipisteiksi (Point). */
 
-/* Muutetaan valtakunnallinen keskusta-alueaineisto keskipisteiksi (Point). */
-ALTER TABLE keskusta_alueet_centroid
-    ALTER COLUMN geom TYPE geometry(Point, 3067) USING ST_CENTROID(geom);
+IF calculationYear = baseYear THEN
 
-/* Poistetaan ylimääräiset / virheelliset keskustat */
-DELETE FROM keskusta_alueet_centroid
-    WHERE keskustyyp IN ('Kaupunkiseudun pieni alakeskus');
-/* Päivitetään geometriat kaupunkiseutujen keskustojen osalta (ydinkeskusten keskipisteet saadaan tarkimmin Urban Zone-vyöhykeaineiston kävelykeskustojen keskipisteistä). */
-UPDATE keskusta_alueet_centroid
-SET geom = ST_CENTROID(uz.geom)
-    FROM uz
-        WHERE ST_INTERSECTS(keskusta_alueet_centroid.geom, uz.geom)
-        AND uz.vyoh = 1;
-        /* Tästä poistettu returning * - toimiiko vielä? */
-CREATE INDEX ON keskusta_alueet_centroid USING GIST (geom);
+    CREATE TEMP TABLE IF NOT EXISTS keskusta_alueet_centroid AS
+    SELECT ka.id, st_transform(st_centroid(ka.geom),3067) geom, ka.keskustyyp, ka.keskusnimi
+    FROM aluejaot."KeskustaAlueet" ka WHERE keskustyyp != 'Kaupunkiseudun pieni alakeskus';
 
-/* Rajataan valtakunnallinen keskusta-aineisto kattamaan vain tutkimusruuduille lähimmät kohteet. */
-CREATE TEMP TABLE IF NOT EXISTS keskusverkko AS
-SELECT DISTINCT ON (p2.geom) p2.* FROM
-(SELECT p1.xyind as g1,
-    (SELECT p.id
-        FROM keskusta_alueet_centroid AS p
-        WHERE p1.xyind <> p.id::varchar
-        ORDER BY p.geom <#> p1.geom ASC LIMIT 1
-    ) AS g2
-        FROM ykr AS p1
-        OFFSET 0
-) AS q
-JOIN ykr AS p1
-ON q.g1=p1.xyind
-JOIN keskusta_alueet_centroid AS p2
-ON q.g2=p2.id;
+    /* Päivitetään geometriat kaupunkiseutujen keskustojen osalta (ydinkeskusten keskipisteet saadaan tarkimmin Urban Zone-vyöhykeaineiston kävelykeskustojen keskipisteistä). */
+    UPDATE keskusta_alueet_centroid
+    SET geom = ST_CENTROID(uz.geom)
+        FROM uz
+            WHERE ST_INTERSECTS(keskusta_alueet_centroid.geom, uz.geom)
+            AND uz.vyoh = 1;
+    CREATE INDEX ON keskusta_alueet_centroid USING GIST (geom);
+
+    /* Rajataan valtakunnallinen keskusta-aineisto kattamaan vain tutkimusruuduille lähimmät kohteet. */
+    CREATE TEMP TABLE IF NOT EXISTS keskusverkko AS
+    SELECT DISTINCT ON (p2.geom) p2.* FROM
+    (SELECT p1.xyind as g1,
+        (SELECT p.id
+            FROM keskusta_alueet_centroid AS p
+            WHERE p1.xyind <> p.id::varchar
+            ORDER BY p.geom <#> p1.geom ASC LIMIT 1
+        ) AS g2
+            FROM ykr AS p1
+            OFFSET 0
+    ) AS q
+    JOIN ykr AS p1
+    ON q.g1=p1.xyind
+    JOIN keskusta_alueet_centroid AS p2
+    ON q.g2=p2.id;
+
+    DROP TABLE IF EXISTS keskusta_alueet_centroid;
+
+END IF;
 
 /* Lisätään uusia keskuksia keskusverkkoon vain mikäli käyttäjä on tällaisia syöttänyt! */
 IF kv_taulu IS NOT NULL THEN
     INSERT INTO keskusverkko
     SELECT (SELECT MAX(k.id) FROM keskusverkko k) + row_number() over (order by suunnitelma.geom desc),
-        st_force2d((ST_DUMP(suunnitelma.geom)).geom) as geom, k_ktyyp AS keskustyyp, NULL, k_knimi AS keskusnimi
+        st_force2d((ST_DUMP(suunnitelma.geom)).geom) as geom, k_ktyyp AS keskustyyp, k_knimi AS keskusnimi
     FROM kv suunnitelma
     WHERE NOT EXISTS (
         SELECT 1
@@ -208,16 +222,16 @@ END IF;
 
 CREATE INDEX ON keskusverkko USING GIST (geom);
 
-/* Päivitetään YKR-perusruutuihin etäisyys (centdist, km, float) lähimpään keskukseen. */
+/* Päivitetään YKR-perusruutuihin etäisyys (centdist, km, real) lähimpään keskukseen. */
 UPDATE ykr
 SET centdist = sq2.centdist FROM
     (SELECT ykr.xyind, keskusta.centdist
     FROM ykr
     CROSS JOIN LATERAL
-    (SELECT ST_Distance(ST_CENTROID(keskustat.geom), ykr.geom)/1000
-    AS centdist FROM keskusta_alueet_centroid keskustat
-    WHERE keskustat.keskustyyp != 'Kaupunkiseudun pieni alakeskus'
-    ORDER BY ykr.geom <#> keskustat.geom
+        (SELECT ST_Distance(ST_CENTROID(keskustat.geom), ykr.geom)/1000 AS centdist
+            FROM keskusverkko keskustat
+        WHERE keskustat.keskustyyp != 'Kaupunkiseudun pieni alakeskus'
+        ORDER BY ykr.geom <#> keskustat.geom
     LIMIT 1) AS keskusta) as sq2
 WHERE ykr.xyind = sq2.xyind;
 
@@ -431,7 +445,11 @@ ALTER TABLE ykr
     DROP COLUMN IF EXISTS alueteho_muutos;
 
 RETURN QUERY SELECT * FROM ykr;
-DROP TABLE IF EXISTS kt, kv, keskusta_alueet_centroid, keskusverkko, jl, centers, uz_new, uz, ykr;
+DROP TABLE IF EXISTS kt, kv, jl, centers, uz_new, uz, ykr;
+
+IF calculationYear = targetYear THEN
+    DROP TABLE IF EXISTS keskusverkko;
+END IF;
 
 /* Käsittele virhetilanteet */
 /* Handle exceptions */
