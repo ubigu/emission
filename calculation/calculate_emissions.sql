@@ -164,9 +164,9 @@ BEGIN
     SELECT array[kaukok, sahko, pumput, muu] INTO jmuoto_apu2 FROM energia.jmuoto_apu WHERE type = 'jmuoto_apu2';
     
     /* Jäähdytyksen ominaispäästökertoimet | Emission values for cooling */
-    SELECT array[kaukok,sahko,pumput,muu] FROM energia.jaahdytys_gco2kwh ej WHERE ej.vuosi = year AND ej.skenaario = scenario INTO j_gco2kwh;
+    SELECT array[kaukok, sahko, pumput, muu] FROM energia.jaahdytys_gco2kwh ej WHERE ej.vuosi = year AND ej.skenaario = scenario INTO j_gco2kwh;
     SELECT array(SELECT unnest(jmuoto_apu1) * sahko_gco2kwh + unnest(j_gco2kwh) * unnest(jmuoto_apu2)) INTO jaahdytys_gco2kwh;
-
+   
     --------------------------------------------------------
     /* Liikenteen globaalimuuttujat - Ominaispäästötietojen esikäsittely, kulkumuodosta riippumattomia */ 
     /* Global parameters for traffic - emission values preprocessing, independent of traffic mode */
@@ -283,12 +283,12 @@ BEGIN
         END IF;
         DROP TABLE IF EXISTS rak_initial;
 
-    ELSE 
+    ELSE
 
         /* Valitaan rakennustietojen väliaikaisen taulun generointikysely ajettavaksi sen perusteella, millaista rakennusdataa on käytössä */
         /* Choose correct query for creating a temporary building data table depending on the type of building data in use */
         IF localbuildings = true THEN
-            IF refined = true THEN 
+            IF refined = true THEN
                 EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr2 AS SELECT xyind, rakv::int, energiam, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, myymal_pien_ala :: int, myymal_super_ala :: int, myymal_hyper_ala :: int, myymal_muu_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, teoll_elint_ala :: int, teoll_tekst_ala :: int, teoll_puu_ala :: int, teoll_paper_ala :: int, teoll_miner_ala :: int, teoll_kemia_ala :: int, teoll_kone_ala :: int, teoll_mjalos_ala :: int, teoll_metal_ala :: int, teoll_vesi_ala :: int, teoll_energ_ala :: int, teoll_yhdysk_ala :: int, teoll_kaivos_ala :: int, teoll_muu_ala :: int, varast_ala :: int, muut_ala :: int, teoll_lkm :: int, varast_lkm :: int FROM '|| quote_ident(ykr_rakennukset) ||' WHERE rakv::int != 0 AND xyind IN (SELECT ykr1.xyind FROM ykr1)';
             ELSE 
                 EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr2 AS SELECT xyind, rakv::int, energiam, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, varast_ala :: int, muut_ala :: int, teoll_lkm :: int, varast_lkm :: int FROM '|| quote_ident(ykr_rakennukset) ||' WHERE rakv::int != 0 AND xyind IN (SELECT ykr1.xyind FROM ykr1)';
@@ -407,8 +407,7 @@ BEGIN
             WHERE rakennukset.xyind = results.xyind;
     END IF;
     
-    UPDATE results
-    SET 
+    UPDATE results SET 
         tilat_jaahdytys_tco2 = rakennukset.tilat_jaahdytys_co2 * muunto_massa,
         sahko_kiinteistot_tco2 = rakennukset.sahko_kiinteistot_co2 * muunto_massa,
         sahko_kotitaloudet_tco2 = rakennukset.sahko_kotitaloudet_co2 * muunto_massa,
