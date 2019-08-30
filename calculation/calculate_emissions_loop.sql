@@ -50,7 +50,6 @@ BEGIN
     LOOP
 
         IF calculationYear = baseYear THEN
-            DROP TABLE IF EXISTS res;
             CREATE TEMP TABLE res AS SELECT * FROM il_calculate_emissions(ykr_v, ykr_tp, ykr_rakennukset, aoi, calculationYear, skenaario, metodi, sahkolaji, alue, baseYear, targetYear, kt_taulu, kv_taulu, jl_taulu);
         ELSE 
             INSERT INTO res SELECT * FROM il_calculate_emissions(ykr_v, ykr_tp, ykr_rakennukset, aoi, calculationYear, skenaario, metodi, sahkolaji, alue, baseYear, targetYear, kt_taulu, kv_taulu, jl_taulu);
