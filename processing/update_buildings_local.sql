@@ -3,40 +3,41 @@ CREATE OR REPLACE FUNCTION
 public.il_update_buildings_local(
     rak_taulu text,
     ykr_taulu text,
-    calculationYear integer, -- Vuosi, jonka perusteella päästöt lasketaan / viitearvot haetaan
-    baseYear integer,
-	targetYear integer,
+    calculationYear int, -- Vuosi, jonka perusteella päästöt lasketaan / viitearvot haetaan
+    baseYear int,
+	targetYear int,
     kehitysskenaario varchar -- PITKO:n mukainen kehitysskenaario
 )
 RETURNS TABLE (
     xyind varchar,
     rakv int,
 	energiam varchar,
-    rakyht_ala integer, 
-    asuin_ala integer,
-    erpien_ala integer,
-    rivita_ala integer,
-    askert_ala integer,
-    liike_ala integer,
-    myymal_ala integer,
-    majoit_ala integer,
-    asla_ala integer,
-    ravint_ala integer,
-    tsto_ala integer,
-    liiken_ala integer,
-    hoito_ala integer,
-    kokoon_ala integer,
-    opetus_ala integer,
-    teoll_ala integer,
-    varast_ala integer,
-    muut_ala integer,
+    rakyht_ala int, 
+    asuin_ala int,
+    erpien_ala int,
+    rivita_ala int,
+    askert_ala int,
+    liike_ala int,
+    myymal_ala int,
+    majoit_ala int,
+    asla_ala int,
+    ravint_ala int,
+    tsto_ala int,
+    liiken_ala int,
+    hoito_ala int,
+    kokoon_ala int,
+    opetus_ala int,
+    teoll_ala int,
+    varast_ala int,
+    muut_ala int,
     teoll_lkm smallint,
     varast_lkm smallint
 ) AS $$
 DECLARE
+	defaultdemolition boolean;
 	energiamuoto varchar;
-	laskentavuodet integer[];
-	laskenta_length integer;
+	laskentavuodet int[];
+	laskenta_length int;
 	step real;
 	localweight real;
 	globalweight real;
@@ -51,13 +52,16 @@ SELECT 1::real / laskenta_length INTO step;
 SELECT (calculationYear - baseYear + 1) * step INTO globalweight;
 SELECT 1 - globalweight INTO localweight;
 
-EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr AS SELECT xyind::varchar, vyoh, k_ap_ala, k_ar_ala, k_ak_ala, k_muu_ala, k_poistuma FROM ' || quote_ident(ykr_taulu) || ' WHERE (k_ap_ala IS NOT NULL AND k_ap_ala != 0) OR (k_ar_ala IS NOT NULL AND k_ar_ala != 0) OR (k_ak_ala IS NOT NULL AND k_ak_ala != 0) OR (k_muu_ala IS NOT NULL AND k_muu_ala != 0) OR (k_poistuma IS NOT NULL AND k_poistuma != 0)';
-EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS rak AS SELECT xyind::varchar, rakv::int, energiam::varchar, rakyht_ala::int, asuin_ala::int, erpien_ala::int, rivita_ala::int, askert_ala::int, liike_ala::int, myymal_ala::int, majoit_ala::int, asla_ala::int, ravint_ala::int, tsto_ala::int, liiken_ala::int, hoito_ala::int, kokoon_ala::int, opetus_ala::int, teoll_ala::int, varast_ala::int, muut_ala::int, teoll_lkm::smallint, varast_lkm::smallint FROM ' || quote_ident(rak_taulu) ||' WHERE rakv::int != 0'; -- AND xyind IN (SELECT ykr.xyind from ykr)
+EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr AS SELECT xyind, vyoh, k_ap_ala, k_ar_ala, k_ak_ala, k_muu_ala, k_poistuma FROM ' || quote_ident(ykr_taulu) || ' WHERE (k_ap_ala IS NOT NULL AND k_ap_ala != 0) OR (k_ar_ala IS NOT NULL AND k_ar_ala != 0) OR (k_ak_ala IS NOT NULL AND k_ak_ala != 0) OR (k_muu_ala IS NOT NULL AND k_muu_ala != 0) OR (k_poistuma IS NOT NULL AND k_poistuma != 0)';
+EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS rak AS SELECT xyind, rakv::int, energiam::varchar, rakyht_ala::int, asuin_ala::int, erpien_ala::int, rivita_ala::int, askert_ala::int, liike_ala::int, myymal_ala::int, majoit_ala::int, asla_ala::int, ravint_ala::int, tsto_ala::int, liiken_ala::int, hoito_ala::int, kokoon_ala::int, opetus_ala::int, teoll_ala::int, varast_ala::int, muut_ala::int, teoll_lkm::smallint, varast_lkm::smallint FROM ' || quote_ident(rak_taulu) ||' WHERE rakv::int != 0'; -- AND xyind IN (SELECT ykr.xyind from ykr)
 
 /* Haetaan globaalit lämmitysmuotojakaumat laskentavuodelle ja -skenaariolle */
 /* Fetching global heating ratios for current calculation year and scenario */
 CREATE TEMP TABLE IF NOT EXISTS global_jakauma AS
-	SELECT rakennus_tyyppi, kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, turve, hiili, maalampo, muu_lammitys FROM rakymp.lammitysmuotojakauma lmj WHERE lmj.vuosi = calculationYear AND lmj.rakv = calculationYear AND lmj.skenaario = kehitysskenaario;
+	SELECT rakennus_tyyppi, kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, turve, hiili, maalampo, muu_lammitys
+	FROM rakymp.lammitysmuotojakauma lmj
+	WHERE lmj.vuosi = calculationYear AND lmj.rakv = calculationYear AND lmj.skenaario = kehitysskenaario;
+
 INSERT INTO global_jakauma (rakennus_tyyppi, kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, turve, hiili, maalampo, muu_lammitys)
 	SELECT 'rakyht', avg(kaukolampo), avg(kevyt_oljy), avg(raskas_oljy), avg(kaasu), avg(sahko), avg(puu), avg(turve), avg(hiili), avg(maalampo), avg(muu_lammitys)
 	FROM global_jakauma;
@@ -67,12 +71,11 @@ INSERT INTO global_jakauma (rakennus_tyyppi, kaukolampo, kevyt_oljy, raskas_oljy
 SELECT COALESCE( SUM(rak.teoll_ala) / NULLIF(SUM(rak.teoll_lkm),0), 1400) FROM rak into teoll_koko; -- Fallback-vakio tilastollinen
 SELECT COALESCE( SUM(rak.varast_ala) / NULLIF(SUM(rak.varast_lkm),0), 1250) FROM rak into varast_koko; --Fallback-vakio tilastollinen
 
-
 /* Puretaan rakennuksia  */
-
 /* Demolishing buildings */
+SELECT CASE WHEN k_poistuma > 999998 AND k_poistuma < 1000000 THEN TRUE ELSE FALSE END FROM ykr LIMIT 1 INTO defaultdemolition;
+
 UPDATE rak b SET
-    asuin_ala = (CASE WHEN asuin > b.asuin_ala THEN 0 ELSE b.asuin_ala - asuin END),
     erpien_ala = (CASE WHEN erpien > b.erpien_ala THEN 0 ELSE b.erpien_ala - erpien END),
     rivita_ala = (CASE WHEN rivita > b.rivita_ala THEN 0 ELSE b.rivita_ala - rivita END),
     askert_ala = (CASE WHEN askert > b.askert_ala THEN 0 ELSE b.askert_ala - askert END),
@@ -89,31 +92,30 @@ UPDATE rak b SET
     teoll_ala = (CASE WHEN teoll > b.teoll_ala THEN 0 ELSE b.teoll_ala - teoll END),
     varast_ala = (CASE WHEN varast > b.varast_ala THEN 0 ELSE b.varast_ala - varast END),
     muut_ala = (CASE WHEN muut > b.muut_ala THEN 0 ELSE b.muut_ala - muut END),
-    teoll_lkm = (CASE WHEN teoll > 0 AND b.teoll_lkm - teoll / teoll_koko > 0 THEN b.teoll_lkm - teoll / teoll_koko ELSE teoll_lkm END),
-    varast_lkm = (CASE WHEN varast > 0 AND b.varast_lkm - varast / varast_koko > 0 THEN b.varast_lkm - varast / varast_koko ELSE varast_lkm END)
+    teoll_lkm = (CASE WHEN teoll > 0 AND b.teoll_lkm - teoll / teoll_koko > 0 THEN b.teoll_lkm - teoll / teoll_koko ELSE b.teoll_lkm END),
+    varast_lkm = (CASE WHEN varast > 0 AND b.varast_lkm - varast / varast_koko > 0 THEN b.varast_lkm - varast / varast_koko ELSE b.varast_lkm END)
 FROM (
 WITH poistuma AS (
-    SELECT ykr.xyind, SUM(k_poistuma) AS poistuma FROM ykr GROUP BY ykr.xyind
+    SELECT ykr.xyind, (CASE WHEN defaultdemolition = TRUE THEN 0.0015 ELSE SUM(k_poistuma) END) AS poistuma FROM ykr GROUP BY ykr.xyind
 ),
 buildings AS (
 	SELECT rakennukset.xyind, rakennukset.rakv,
-		rakennukset.asuin_ala :: real / NULLIF(grouped.rakyht_ala, 0) asuin,
-		rakennukset.erpien_ala :: real / NULLIF(grouped.rakyht_ala, 0) erpien,
-		rakennukset.rivita_ala :: real / NULLIF(grouped.rakyht_ala, 0) rivita,
-		rakennukset.askert_ala :: real / NULLIF(grouped.rakyht_ala, 0) askert,
-		rakennukset.liike_ala :: real / NULLIF(grouped.rakyht_ala, 0) liike,
-        rakennukset.myymal_ala :: real / NULLIF(grouped.rakyht_ala, 0) myymal,
-        rakennukset.majoit_ala :: real / NULLIF(grouped.rakyht_ala, 0) majoit,
-        rakennukset.asla_ala :: real / NULLIF(grouped.rakyht_ala, 0) asla,
-        rakennukset.ravint_ala :: real / NULLIF(grouped.rakyht_ala, 0) ravint,
-		rakennukset.tsto_ala :: real / NULLIF(grouped.rakyht_ala, 0) tsto,
-		rakennukset.liiken_ala :: real / NULLIF(grouped.rakyht_ala, 0) liiken,
-		rakennukset.hoito_ala :: real / NULLIF(grouped.rakyht_ala, 0) hoito,
-		rakennukset.kokoon_ala :: real / NULLIF(grouped.rakyht_ala, 0) kokoon,
-		rakennukset.opetus_ala :: real / NULLIF(grouped.rakyht_ala, 0) opetus,
-		rakennukset.teoll_ala :: real / NULLIF(grouped.rakyht_ala, 0) teoll,
-		rakennukset.varast_ala:: real / NULLIF(grouped.rakyht_ala, 0) varast,
-		rakennukset.muut_ala :: real / NULLIF(grouped.rakyht_ala, 0) muut
+		CASE WHEN defaultdemolition = TRUE THEN rakennukset.erpien_ala :: real ELSE rakennukset.erpien_ala :: real / NULLIF(grouped.rakyht_ala, 0) END erpien,
+		CASE WHEN defaultdemolition = TRUE THEN rakennukset.rivita_ala :: real ELSE rakennukset.rivita_ala :: real / NULLIF(grouped.rakyht_ala, 0) END rivita,
+		CASE WHEN defaultdemolition = TRUE THEN rakennukset.askert_ala :: real ELSE rakennukset.askert_ala :: real / NULLIF(grouped.rakyht_ala, 0) END askert,
+		CASE WHEN defaultdemolition = TRUE THEN rakennukset.liike_ala :: real ELSE rakennukset.liike_ala :: real / NULLIF(grouped.rakyht_ala, 0) END liike,
+        CASE WHEN defaultdemolition = TRUE THEN rakennukset.myymal_ala :: real ELSE rakennukset.myymal_ala :: real / NULLIF(grouped.rakyht_ala, 0) END myymal,
+        CASE WHEN defaultdemolition = TRUE THEN rakennukset.majoit_ala :: real ELSE rakennukset.majoit_ala :: real / NULLIF(grouped.rakyht_ala, 0) END majoit,
+        CASE WHEN defaultdemolition = TRUE THEN rakennukset.asla_ala :: real ELSE rakennukset.asla_ala :: real / NULLIF(grouped.rakyht_ala, 0) END asla,
+        CASE WHEN defaultdemolition = TRUE THEN rakennukset.ravint_ala :: real ELSE rakennukset.ravint_ala :: real / NULLIF(grouped.rakyht_ala, 0) END ravint,
+		CASE WHEN defaultdemolition = TRUE THEN rakennukset.tsto_ala :: real ELSE rakennukset.tsto_ala :: real / NULLIF(grouped.rakyht_ala, 0) END tsto,
+		CASE WHEN defaultdemolition = TRUE THEN rakennukset.liiken_ala :: real ELSE rakennukset.liiken_ala :: real / NULLIF(grouped.rakyht_ala, 0) END liiken,
+		CASE WHEN defaultdemolition = TRUE THEN rakennukset.hoito_ala :: real ELSE rakennukset.hoito_ala :: real / NULLIF(grouped.rakyht_ala, 0) END hoito,
+		CASE WHEN defaultdemolition = TRUE THEN rakennukset.kokoon_ala :: real ELSE rakennukset.kokoon_ala :: real / NULLIF(grouped.rakyht_ala, 0) END kokoon,
+		CASE WHEN defaultdemolition = TRUE THEN rakennukset.opetus_ala :: real ELSE rakennukset.opetus_ala :: real / NULLIF(grouped.rakyht_ala, 0) END opetus,
+		CASE WHEN defaultdemolition = TRUE THEN rakennukset.teoll_ala :: real ELSE rakennukset.teoll_ala :: real / NULLIF(grouped.rakyht_ala, 0) END teoll,
+		CASE WHEN defaultdemolition = TRUE THEN rakennukset.varast_ala :: real ELSE rakennukset.varast_ala:: real / NULLIF(grouped.rakyht_ala, 0) END varast,
+		CASE WHEN defaultdemolition = TRUE THEN rakennukset.muut_ala :: real ELSE rakennukset.muut_ala :: real / NULLIF(grouped.rakyht_ala, 0) END muut
 	FROM rak rakennukset JOIN
 	(SELECT build2.xyind, SUM(build2.rakyht_ala) rakyht_ala FROM rak build2 GROUP BY build2.xyind) grouped
 	ON grouped.xyind = rakennukset.xyind
@@ -121,7 +123,6 @@ buildings AS (
 )
 SELECT poistuma.xyind,
 	buildings.rakv,
-	poistuma * asuin asuin,
 	poistuma * erpien erpien,
 	poistuma * rivita rivita,
 	poistuma * askert askert,
@@ -141,7 +142,6 @@ SELECT poistuma.xyind,
 FROM poistuma LEFT JOIN buildings ON buildings.xyind = poistuma.xyind
 WHERE poistuma > 0 AND buildings.rakv IS NOT NULL) poistumat
 WHERE b.xyind = poistumat.xyind AND b.rakv = poistumat.rakv;
-
 
 /* Lisätään puuttuvat sarakkeet väliaikaiseen YKR-dataan */
 /* Adding new columns into the temporary YKR data */
@@ -760,7 +760,7 @@ LOOP
 	WITH cte AS (
 	WITH
 		indeksi AS (
-			SELECT l.xyind FROM local_jakauma l
+			SELECT DISTINCT ON (l.xyind) l.xyind FROM local_jakauma l
 		),
 		erpien_lammitysmuoto AS (
 			SELECT l.xyind,
@@ -1046,9 +1046,9 @@ LOOP
 	)
     INSERT INTO rak (xyind, rakv, energiam, rakyht_ala, asuin_ala, erpien_ala, rivita_ala, askert_ala, liike_ala, myymal_ala, majoit_ala, asla_ala, ravint_ala, tsto_ala, liiken_ala, hoito_ala, kokoon_ala, opetus_ala, teoll_ala, varast_ala, muut_ala, teoll_lkm, varast_lkm)
 	SELECT
-		DISTINCT ON (ykr.xyind) ykr.xyind, -- xyind
+		ykr.xyind, -- xyind
         calculationYear, -- rakv
-		energiamuoto::varchar, -- energiam
+		energiamuoto, -- energiam
         NULL::int, -- rakyht_ala
         NULL::int, --asuin_ala
         CASE WHEN k_ap_ala * erpien > 0.4 AND k_ap_ala * erpien < 1 THEN 1 ELSE k_ap_ala * erpien END, -- erpien_ala
@@ -1081,8 +1081,8 @@ UPDATE rak SET
 	rakyht_ala = COALESCE(rak.asuin_ala,0) + COALESCE(rak.liike_ala,0) + COALESCE(rak.tsto_ala,0) + COALESCE(rak.liiken_ala,0) +
 	COALESCE(rak.hoito_ala,0) + COALESCE(rak.kokoon_ala,0) + COALESCE(rak.opetus_ala, 0) + COALESCE(rak.teoll_ala, 0) +
 	COALESCE(rak.varast_ala, 0) + COALESCE(rak.muut_ala, 0),
-	teoll_lkm = (CASE WHEN CEIL(rak.teoll_ala / teoll_koko) < 100 THEN 0 ELSE CEIL(rak.teoll_ala / teoll_koko)  END),
-	varast_lkm = (CASE WHEN CEIL(rak.varast_ala / varast_koko) < 100 THEN 0 ELSE CEIL(rak.varast_ala / varast_koko)  END) 
+	teoll_lkm = (CASE WHEN CEIL(rak.teoll_ala / NULLIF(teoll_koko,0)) < 100 THEN 0 ELSE CEIL(rak.teoll_ala / NULLIF(teoll_koko,0))  END),
+	varast_lkm = (CASE WHEN CEIL(rak.varast_ala / NULLIF(varast_koko,0)) < 100 THEN 0 ELSE CEIL(rak.varast_ala / NULLIF(varast_koko,0))  END) 
 WHERE rak.rakv = calculationYear AND rak.rakyht_ala IS NULL;
 
 DELETE FROM rak WHERE rak.rakyht_ala = 0;
@@ -1091,7 +1091,7 @@ DELETE FROM rak WHERE rak.rakyht_ala = 0;
 /* Updating heating characteristics of old buildings */
 
 CREATE TEMP TABLE IF NOT EXISTS rak_temp AS
-select distinct on (r.xyind, r.rakv, energiam) r.xyind, r.rakv,
+SELECT DISTINCT ON (r.xyind, r.rakv, energiam) r.xyind, r.rakv,
 UNNEST(CASE
 WHEN turve IS NULL AND hiili IS NULL AND muu_lammitys IS NULL AND raskas_oljy IS NULL AND kevyt_oljy IS NULL AND kaasu IS NULL THEN
 	ARRAY['kaukolampo', 'sahko', 'puu', 'maalampo'] 
@@ -1385,22 +1385,17 @@ LEFT JOIN muutos ON rak_temp.xyind = muutos.xyind AND rak_temp.rakv = muutos.rak
 WHERE NOT (query.erpien_ala IS NULL AND query.rivita_ala IS NULL and query.askert_ala IS NULL and query.liike_ala IS NULL and query.tsto_ala IS NULL and query.hoito_ala IS NULL and query.liiken_ala IS NULL AND
 	query.kokoon_ala IS NULL and query.opetus_ala IS NULL and query.teoll_ala IS NULL AND query.varast_ala IS NULL AND query.muut_ala IS NULL AND query.teoll_lkm IS NULL AND query.varast_lkm IS NULL);
 
-INSERT INTO rak_new SELECT
-r.xyind,r.rakv,r.energiam,r.rakyht_ala,r.asuin_ala,r.erpien_ala,r.rivita_ala,
-r.askert_ala,r.liike_ala,r.myymal_ala,r.majoit_ala,r.asla_ala,r.ravint_ala,
-r.tsto_ala,r.liiken_ala,r.hoito_ala,r.kokoon_ala,r.opetus_ala,r.teoll_ala,
-r.varast_ala,r.muut_ala,r.teoll_lkm,r.varast_lkm
-FROM rak r WHERE r.rakv >= 2019;
-
 UPDATE rak_new SET asuin_ala = COALESCE(rak_new.erpien_ala,0) + COALESCE(rak_new.rivita_ala,0) + COALESCE(rak_new.askert_ala,0),
 rakyht_ala = COALESCE(rak_new.erpien_ala,0) + COALESCE(rak_new.rivita_ala,0) + COALESCE(rak_new.askert_ala,0) + COALESCE(rak_new.liike_ala,0) + COALESCE(rak_new.tsto_ala,0) + COALESCE(rak_new.liiken_ala,0) +
 COALESCE(rak_new.hoito_ala,0) + COALESCE(rak_new.kokoon_ala,0) + COALESCE(rak_new.opetus_ala,0) + COALESCE(rak_new.teoll_ala,0) + COALESCE(rak_new.varast_ala,0) + COALESCE(rak_new.muut_ala,0);
 
-RETURN QUERY SELECT * FROM rak_new;
+RETURN QUERY SELECT * FROM rak_new UNION SELECT * FROM rak WHERE rak.rakv >= 2019;
 DROP TABLE IF EXISTS ykr, rak, rak_new, rak_temp, local_jakauma, global_jakauma, kayttotapajakauma;
+
 /*
 EXCEPTION WHEN OTHERS THEN
 	DROP TABLE IF EXISTS ykr, rak, rak_new, rak_temp, local_jakauma, global_jakauma, kayttotapajakauma;
 */
+
 END;
 $$ LANGUAGE plpgsql;
