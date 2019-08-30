@@ -3,59 +3,59 @@ CREATE OR REPLACE FUNCTION
 public.il_update_buildings_refined(
     rak_taulu text,
     ykr_taulu text,
-    calculationYear integer, -- Vuosi, jonka perusteella päästöt lasketaan / viitearvot haetaan
-    baseYear integer,
-	targetYear integer,
-    kehitysskenaario varchar -- PITKO:n mukainen kehitysskenaario
+    calculationYear int, -- Vuosi, jonka perusteella päästöt lasketaan / viitearvot haetaan
+    baseYear int,
+	targetYear int,
+    kehitysskenaario int -- PITKO:n mukainen kehitysskenaario
 )
 RETURNS TABLE (
     xyind varchar,
     rakv int,
 	energiam varchar,
-    rakyht_ala integer,
-    asuin_ala integer,
-    erpien_ala integer,
-    rivita_ala integer,
-    askert_ala integer,
-    liike_ala integer,
-    myymal_ala integer,
-		myymal_hyper_ala integer,
-		myymal_super_ala integer,
-		myymal_pien_ala integer,
-		myymal_muu_ala integer,
-    majoit_ala integer,
-    asla_ala integer,
-    ravint_ala integer,
-    tsto_ala integer,
-    liiken_ala integer,
-    hoito_ala integer,
-    kokoon_ala integer,
-    opetus_ala integer,
-    teoll_ala integer,
-		teoll_kaivos_ala integer,
-		teoll_elint_ala integer,
-		teoll_tekst_ala integer,
-		teoll_puu_ala integer,
-		teoll_paper_ala integer,
-		teoll_kemia_ala integer,
-		teoll_miner_ala integer,
-		teoll_mjalos_ala integer,
-		teoll_metal_ala integer,
-		teoll_kone_ala integer,
-		teoll_muu_ala integer,
-		teoll_energ_ala integer,
-		teoll_vesi_ala integer,
-		teoll_yhdysk_ala integer,
-    varast_ala integer,
-    muut_ala integer,
+    rakyht_ala int,
+    asuin_ala int,
+    erpien_ala int,
+    rivita_ala int,
+    askert_ala int,
+    liike_ala int,
+    myymal_ala int,
+		myymal_hyper_ala int,
+		myymal_super_ala int,
+		myymal_pien_ala int,
+		myymal_muu_ala int,
+    majoit_ala int,
+    asla_ala int,
+    ravint_ala int,
+    tsto_ala int,
+    liiken_ala int,
+    hoito_ala int,
+    kokoon_ala int,
+    opetus_ala int,
+    teoll_ala int,
+		teoll_kaivos_ala int,
+		teoll_elint_ala int,
+		teoll_tekst_ala int,
+		teoll_puu_ala int,
+		teoll_paper_ala int,
+		teoll_kemia_ala int,
+		teoll_miner_ala int,
+		teoll_mjalos_ala int,
+		teoll_metal_ala int,
+		teoll_kone_ala int,
+		teoll_muu_ala int,
+		teoll_energ_ala int,
+		teoll_vesi_ala int,
+		teoll_yhdysk_ala int,
+    varast_ala int,
+    muut_ala int,
     teoll_lkm smallint,
     varast_lkm smallint
 ) AS $$
 DECLARE
 	defaultdemolition boolean;
 	energiamuoto varchar;
-	laskentavuodet integer[];
-	laskenta_length integer;
+	laskentavuodet int[];
+	laskenta_length int;
 	step real;
 	localweight real;
 	globalweight real;
@@ -89,8 +89,10 @@ INSERT INTO global_jakauma (rakennus_tyyppi, kaukolampo, kevyt_oljy, raskas_oljy
 SELECT COALESCE(SUM(rak.teoll_ala)/NULLIF(SUM(rak.teoll_lkm),0),1400) FROM rak into teoll_koko; -- Fallback-vakio tilastollinen
 SELECT COALESCE(SUM(rak.varast_ala)/NULLIF(SUM(rak.varast_lkm),0),1250) FROM rak into varast_koko; --Fallback-vakio tilastollinen
 
-SELECT CASE WHEN k_poistuma > 999998 AND k_poistuma < 1000000 THEN TRUE ELSE FALSE END FROM ykr LIMIT 1 INTO defaultdemolition;
 
+/* Puretaan rakennuksia  */
+/* Demolishing buildings */
+SELECT CASE WHEN k_poistuma > 999998 AND k_poistuma < 1000000 THEN TRUE ELSE FALSE END FROM ykr LIMIT 1 INTO defaultdemolition;
 
 UPDATE rak b SET
     erpien_ala = (CASE WHEN erpien > b.erpien_ala THEN 0 ELSE b.erpien_ala - erpien END),
@@ -127,8 +129,8 @@ UPDATE rak b SET
 		teoll_yhdysk_ala = (CASE WHEN teoll_yhdysk > b.teoll_yhdysk_ala THEN 0 ELSE b.teoll_yhdysk_ala - teoll_yhdysk END),
     varast_ala = (CASE WHEN varast > b.varast_ala THEN 0 ELSE b.varast_ala - varast END),
     muut_ala = (CASE WHEN muut > b.muut_ala THEN 0 ELSE b.muut_ala - muut END),
-    teoll_lkm = (CASE WHEN teoll > 0 AND b.teoll_lkm - teoll / teoll_koko > 0 THEN b.teoll_lkm - teoll / teoll_koko ELSE teoll_lkm END),
-    varast_lkm = (CASE WHEN varast > 0 AND b.varast_lkm - varast / varast_koko > 0 THEN b.varast_lkm - varast / varast_koko ELSE varast_lkm END)
+    teoll_lkm = (CASE WHEN teoll > 0 AND b.teoll_lkm - teoll / teoll_koko > 0 THEN b.teoll_lkm - teoll / teoll_koko ELSE b.teoll_lkm END),
+    varast_lkm = (CASE WHEN varast > 0 AND b.varast_lkm - varast / varast_koko > 0 THEN b.varast_lkm - varast / varast_koko ELSE b.varast_lkm END)
 FROM (
 WITH poistuma AS (
     SELECT ykr.xyind, (CASE WHEN defaultdemolition = TRUE THEN 0.0015 ELSE SUM(k_poistuma) END) AS poistuma FROM ykr GROUP BY ykr.xyind
