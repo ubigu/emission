@@ -6,7 +6,7 @@ public.il_update_buildings_refined(
     calculationYear int, -- Vuosi, jonka perusteella päästöt lasketaan / viitearvot haetaan
     baseYear int,
 	targetYear int,
-    kehitysskenaario int -- PITKO:n mukainen kehitysskenaario
+    kehitysskenaario varchar -- PITKO:n mukainen kehitysskenaario
 )
 RETURNS TABLE (
     xyind varchar,
@@ -92,7 +92,7 @@ SELECT COALESCE(SUM(rak.varast_ala)/NULLIF(SUM(rak.varast_lkm),0),1250) FROM rak
 
 /* Puretaan rakennuksia  */
 /* Demolishing buildings */
-SELECT CASE WHEN k_poistuma > 999998 AND k_poistuma < 1000000 THEN TRUE ELSE FALSE END FROM ykr LIMIT 1 INTO defaultdemolition;
+SELECT CASE WHEN k_poistuma > 999998 AND k_poistuma < 1000000 THEN true ELSE false END FROM ykr LIMIT 1 INTO defaultdemolition;
 
 UPDATE rak b SET
     erpien_ala = (CASE WHEN erpien > b.erpien_ala THEN 0 ELSE b.erpien_ala - erpien END),

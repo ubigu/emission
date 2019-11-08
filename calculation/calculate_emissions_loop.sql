@@ -36,6 +36,8 @@ RETURNS TABLE(
     sum_sahko_tco2 real,
     sum_rakentaminen_tco2 real,
     asukkaat int,
+    kerrosala int,
+    uz int,
     vuosi date,
     geom geometry(MultiPolygon, 3067))
 AS $$

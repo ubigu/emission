@@ -160,3 +160,13 @@ LEFT JOIN opetus on i.skenaario = opetus.skenaario AND i.rakv = opetus.rakv
 LEFT JOIN teoll on i.skenaario = teoll.skenaario AND i.rakv = teoll.rakv
 LEFT JOIN varast on i.skenaario = varast.skenaario AND i.rakv = varast.rakv
 LEFT JOIN muut on i.skenaario = muut.skenaario AND i.rakv = muut.rakv
+
+
+create table user_output."ykrgrid" as select * from il_preprocess('kuntaraja_Tampere', 'YKR_vaesto_2017_Tampere', 'YKR_tyopaikat_2015_Tampere');
+select sum(v_yht) from ykrgrid;
+
+sum
+229654
+
+sum
+230505

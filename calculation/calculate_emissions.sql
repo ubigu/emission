@@ -36,6 +36,8 @@ RETURNS TABLE(
     sum_sahko_tco2 real,
     sum_rakentaminen_tco2 real,
     asukkaat int,
+    kerrosala int,
+    uz int,
     vuosi date,
     geom geometry)
 AS $$
@@ -121,73 +123,6 @@ BEGIN
         END IF;
 
     END IF;
-
-    /* Kaukolämmön ominaispäästökertoimet (etsitään ensin oikean kaukolämpötaulun nimi) */
-    /* Emission values for district heating (first finding out the name of the correct district heating table) */
-    SELECT kaukolampo FROM aluejaot.alueet WHERE kunta = area OR maakunta = area INTO kaukolampotaulu;
-    EXECUTE 'SELECT gco2kwh FROM energia.'||kaukolampotaulu||' kl WHERE kl.vuosi = $1 AND kl.skenaario = $2 AND kl.metodi = $3'
-        INTO klampo_gco2kwh USING year, scenario, method;
-
-    /* Sähkön ominaispäästökertoimet */
-    /* Electricity emission values */
-    SELECT sahko.gco2kwh INTO sahko_gco2kwh FROM energia.sahko AS sahko WHERE
-        sahko.vuosi = year AND
-        sahko.skenaario = scenario AND
-        sahko.metodi = method AND
-        sahko.paastolaji = sahkolaji;
-
-    SELECT sahko_koti_as INTO sahko_as FROM energia.sahko_koti_as sas WHERE sas.vuosi = year AND sas.skenaario = scenario;
-
-    /* Lämmitystarve vuositasolla | Annual heating demand
-        lammitys_korjaus_vkunta [ei yksikköä] on paikkakuntakohtainen lämmitystarpeen korjauskerroin suhteessa lämmitystarvelaskennan vertailupaikkakuntaan. Lukuarvo riippuu laskentavuodesta. 
-        lammitystarve_vuosi [ei yksikköä] on tarkastelupaikkakunnan lämmitystarvelaskennan vertailupaikkakunnan lämmitystarveluku tai sen ennuste. Lukuarvo riippuu laskentavuodesta.
-        lammitystarve_vertailu [ei yksikköä] on tarkastelupaikkakunnan lämmitystarvelaskennan vertailupaikkakunnan lämmitystarveluvun vertailuarvo. Lukuarvo riippuu laskentavuodesta.
-        
-        Tilanteessa, jossa lämmitysenergian ominaiskulutuksesta tilat_kwhm2 ei ole paikallisia parametreja,
-        käytetään vertailupaikkakunnan kertoimen sijaan paikkakuntakohtaista lämmitystarpeen korjauskerrointa Jyväskylän suhteen.
-            lammitys_korjaus_jkl [ei yksikköä] on paikkakuntakohtainen lämmitystarpeen korjauskerroin Jyväskylään. Lukuarvo riippuu laskentavuodesta.
-    */
-    SELECT (lammitystarve_vuosi::real / lammitystarve_vertailu::real / lammitys_korjaus_vkunta::real)
-        INTO lammitystarve FROM energia.lammitystarve as lt
-        WHERE lt.vuosi = year;
-   
-    /* Dummy-kertoimet lämmitysmuodoille | Dummy multipliers by method of heating */
-    SELECT array[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, turve, hiili, maalampo, muu_lammitys] INTO lmuoto_apu1 FROM energia.lmuoto_apu WHERE type = 'lmuoto_apu1';
-    SELECT array[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, turve, hiili, maalampo, muu_lammitys] INTO lmuoto_apu2 FROM energia.lmuoto_apu WHERE type = 'lmuoto_apu2';
-    SELECT array[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, turve, hiili, maalampo, muu_lammitys] INTO lmuoto_apu3 FROM energia.lmuoto_apu WHERE type = 'lmuoto_apu3';
-    SELECT array[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, turve, hiili, maalampo, muu_lammitys] INTO tilat_gco2kwh FROM energia.tilat_gco2kwh t WHERE t.vuosi = year;
-
-    SELECT array(SELECT unnest(lmuoto_apu1) * klampo_gco2kwh + unnest(lmuoto_apu2) * sahko_gco2kwh + unnest(lmuoto_apu3) * unnest(tilat_gco2kwh)) INTO gco2kwh_a;
-
-    /* Dummy-kertoimet jäähdytysmuodoille | Dummy multipliers by method of cooling */
-    SELECT array[kaukok, sahko, pumput, muu] INTO jmuoto_apu1 FROM energia.jmuoto_apu WHERE type = 'jmuoto_apu1';
-    SELECT array[kaukok, sahko, pumput, muu] INTO jmuoto_apu2 FROM energia.jmuoto_apu WHERE type = 'jmuoto_apu2';
-    
-    /* Jäähdytyksen ominaispäästökertoimet | Emission values for cooling */
-    SELECT array[kaukok, sahko, pumput, muu] FROM energia.jaahdytys_gco2kwh ej WHERE ej.vuosi = year AND ej.skenaario = scenario INTO j_gco2kwh;
-    SELECT array(SELECT unnest(jmuoto_apu1) * sahko_gco2kwh + unnest(j_gco2kwh) * unnest(jmuoto_apu2)) INTO jaahdytys_gco2kwh;
-   
-    --------------------------------------------------------
-    /* Liikenteen globaalimuuttujat - Ominaispäästötietojen esikäsittely, kulkumuodosta riippumattomia */ 
-    /* Global parameters for traffic - emission values preprocessing, independent of traffic mode */
-
-    SELECT array[bensiini, etanoli, diesel, kaasu, phev_b, phev_d, ev, kv_muu]
-        INTO kvoima_apu1 FROM liikenne.kvoima_apu1 a1
-        WHERE a1.vuosi = year;
-    SELECT array[bensiini, etanoli, diesel, kaasu, phev_b, phev_d, ev, kv_muu]
-        INTO kvoima_foss_osa FROM liikenne.kvoima_foss_osa f
-        WHERE f.vuosi = year AND f.skenaario = scenario;
-    SELECT array[bensiini, etanoli, diesel, kaasu, phev_b, phev_d, ev, kv_muu]
-        INTO kvoima_gco2kwh FROM liikenne.kvoima_gco2kwh v
-        WHERE v.vuosi = year AND v.skenaario = scenario;
-    SELECT array[bensiini, etanoli, diesel, kaasu, phev_b, phev_d, ev, kv_muu]
-        INTO kvoima_apu2 FROM liikenne.kvoima_apu2 a2
-        WHERE a2.vuosi = year;
-
-    /* Kasvihuonekaasupäästöjen keskimääräiset ominaispäästökertoimet [gCO2-ekv/kWh] määritellään
-    käyttövoimien ominaispäästökertoimien suoriteosuuksilla painotettuna keskiarvona huomioiden samalla niiden bio-osuudet. */
-
-    SELECT array(SELECT sahko_gco2kwh * unnest(kvoima_apu1) + unnest(kvoima_gco2kwh) * unnest(kvoima_foss_osa) * unnest(kvoima_apu2)) INTO gco2kwh_matrix;
 
     SELECT EXISTS (SELECT 1 FROM ykr1 WHERE vyoh = 9993) INTO new_lj;
 
@@ -291,11 +226,11 @@ BEGIN
             IF refined = true THEN
                 EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr2 AS SELECT xyind, rakv::int, energiam, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, myymal_pien_ala :: int, myymal_super_ala :: int, myymal_hyper_ala :: int, myymal_muu_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, teoll_elint_ala :: int, teoll_tekst_ala :: int, teoll_puu_ala :: int, teoll_paper_ala :: int, teoll_miner_ala :: int, teoll_kemia_ala :: int, teoll_kone_ala :: int, teoll_mjalos_ala :: int, teoll_metal_ala :: int, teoll_vesi_ala :: int, teoll_energ_ala :: int, teoll_yhdysk_ala :: int, teoll_kaivos_ala :: int, teoll_muu_ala :: int, varast_ala :: int, muut_ala :: int, teoll_lkm :: int, varast_lkm :: int FROM '|| quote_ident(ykr_rakennukset) ||' WHERE rakv::int != 0 AND xyind IN (SELECT ykr1.xyind FROM ykr1)';
             ELSE 
-                EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr2 AS SELECT xyind, rakv::int, energiam, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, varast_ala :: int, muut_ala :: int, teoll_lkm :: int, varast_lkm :: int FROM '|| quote_ident(ykr_rakennukset) ||' WHERE rakv::int != 0 AND xyind IN (SELECT ykr1.xyind FROM ykr1)';
+                EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr2 AS SELECT xyind, rakv::int, energiam, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, varast_ala :: int, muut_ala :: int, teoll_lkm :: int, varast_lkm :: int FROM '|| quote_ident(ykr_rakennukset) ||' WHERE rakv::int != 0 AND xyind IN (SELECT ykr1.xyind FROM ykr1)';
             END IF;
             CREATE INDEX ON ykr2 (rakv, energiam);
         ELSE
-            EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr2 AS SELECT xyind, rakv::int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, varast_ala :: int, muut_ala :: int, teoll_lkm :: int, varast_lkm :: int FROM '|| quote_ident(ykr_rakennukset) ||' WHERE rakv::int != 0 AND xyind IN (SELECT ykr1.xyind FROM ykr1)';
+            EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr2 AS SELECT xyind, rakv::int, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, varast_ala :: int, muut_ala :: int, teoll_lkm :: int, varast_lkm :: int FROM '|| quote_ident(ykr_rakennukset) ||' WHERE rakv::int != 0 AND xyind IN (SELECT ykr1.xyind FROM ykr1)';
             CREATE INDEX ON ykr2 (rakv); -- update?
         END IF;
 
@@ -317,9 +252,19 @@ BEGIN
         0::real liikenne_palv_tco2,
         0::real rak_korjaussaneeraus_tco2,
         0::real rak_purku_tco2,
-        0::real rak_uudis_tco2
+        0::real rak_uudis_tco2,
+        0::real sum_yhteensa_tco2,
+        0::real sum_lammonsaato_tco2,
+        0::real sum_liikenne_tco2,
+        0::real sum_sahko_tco2,
+        0::real sum_rakentaminen_tco2,
+        y.v_yht::int asukkaat,
+        0::int kerrosala,
+        y.vyoh::int uz,
+        NULL::date vuosi,
+        y.geom geom
     FROM ykr1 y WHERE y.v_yht > 0 OR y.tp_yht > 0 OR y.xyind IN (SELECT ykr2.xyind FROM ykr2);
-    
+
     /* Kun käytetään static-skenaariota tulevaisuuslaskennassa, aseta laskenta lähtövuoden referenssitasolle */
     /* When using a 'static' scenario in the future scenario calculation, set the calculation reference year to baseYear */
     IF initial_scenario = 'static' AND targetYear IS NOT NULL THEN
@@ -327,46 +272,112 @@ BEGIN
         year := baseYear;
     END IF;
 
+        /* Kaukolämmön ominaispäästökertoimet (etsitään ensin oikean kaukolämpötaulun nimi) */
+    /* Emission values for district heating (first finding out the name of the correct district heating table) */
+    SELECT kaukolampo FROM aluejaot.alueet WHERE kunta = area OR maakunta = area INTO kaukolampotaulu;
+    EXECUTE 'SELECT gco2kwh FROM energia.'||kaukolampotaulu||' kl WHERE kl.vuosi = $1 AND kl.skenaario = $2 AND kl.metodi = $3'
+        INTO klampo_gco2kwh USING year, scenario, method;
+
+    /* Sähkön ominaispäästökertoimet */
+    /* Electricity emission values */
+    SELECT sahko.gco2kwh INTO sahko_gco2kwh FROM energia.sahko AS sahko WHERE
+        sahko.vuosi = year AND
+        sahko.skenaario = scenario AND
+        sahko.metodi = method AND
+        sahko.paastolaji = sahkolaji;
+
+    SELECT sahko_koti_as INTO sahko_as FROM energia.sahko_koti_as sas WHERE sas.vuosi = year AND sas.skenaario = scenario;
+
+    /* Lämmitystarve vuositasolla | Annual heating demand
+        lammitys_korjaus_vkunta [ei yksikköä] on paikkakuntakohtainen lämmitystarpeen korjauskerroin suhteessa lämmitystarvelaskennan vertailupaikkakuntaan. Lukuarvo riippuu laskentavuodesta. 
+        lammitystarve_vuosi [ei yksikköä] on tarkastelupaikkakunnan lämmitystarvelaskennan vertailupaikkakunnan lämmitystarveluku tai sen ennuste. Lukuarvo riippuu laskentavuodesta.
+        lammitystarve_vertailu [ei yksikköä] on tarkastelupaikkakunnan lämmitystarvelaskennan vertailupaikkakunnan lämmitystarveluvun vertailuarvo. Lukuarvo riippuu laskentavuodesta.
+        
+        Tilanteessa, jossa lämmitysenergian ominaiskulutuksesta tilat_kwhm2 ei ole paikallisia parametreja,
+        käytetään vertailupaikkakunnan kertoimen sijaan paikkakuntakohtaista lämmitystarpeen korjauskerrointa Jyväskylän suhteen.
+            lammitys_korjaus_jkl [ei yksikköä] on paikkakuntakohtainen lämmitystarpeen korjauskerroin Jyväskylään. Lukuarvo riippuu laskentavuodesta.
+    */
+    SELECT (lammitystarve_vuosi::real / lammitystarve_vertailu::real / lammitys_korjaus_vkunta::real)
+        INTO lammitystarve FROM energia.lammitystarve as lt
+        WHERE lt.vuosi = year;
+   
+    /* Dummy-kertoimet lämmitysmuodoille | Dummy multipliers by method of heating */
+    SELECT array[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, turve, hiili, maalampo, muu_lammitys] INTO lmuoto_apu1 FROM energia.lmuoto_apu WHERE type = 'lmuoto_apu1';
+    SELECT array[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, turve, hiili, maalampo, muu_lammitys] INTO lmuoto_apu2 FROM energia.lmuoto_apu WHERE type = 'lmuoto_apu2';
+    SELECT array[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, turve, hiili, maalampo, muu_lammitys] INTO lmuoto_apu3 FROM energia.lmuoto_apu WHERE type = 'lmuoto_apu3';
+    SELECT array[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, turve, hiili, maalampo, muu_lammitys] INTO tilat_gco2kwh FROM energia.tilat_gco2kwh t WHERE t.vuosi = year;
+    SELECT array(SELECT unnest(lmuoto_apu1) * klampo_gco2kwh + unnest(lmuoto_apu2) * sahko_gco2kwh + unnest(lmuoto_apu3) * unnest(tilat_gco2kwh)) INTO gco2kwh_a;
+
+    /* Dummy-kertoimet jäähdytysmuodoille | Dummy multipliers by method of cooling */
+    SELECT array[kaukok, sahko, pumput, muu] INTO jmuoto_apu1 FROM energia.jmuoto_apu WHERE type = 'jmuoto_apu1';
+    SELECT array[kaukok, sahko, pumput, muu] INTO jmuoto_apu2 FROM energia.jmuoto_apu WHERE type = 'jmuoto_apu2';
+    
+    /* Jäähdytyksen ominaispäästökertoimet | Emission values for cooling */
+    SELECT array[kaukok, sahko, pumput, muu] FROM energia.jaahdytys_gco2kwh ej WHERE ej.vuosi = year AND ej.skenaario = scenario INTO j_gco2kwh;
+    SELECT array(SELECT unnest(jmuoto_apu1) * sahko_gco2kwh + unnest(j_gco2kwh) * unnest(jmuoto_apu2)) INTO jaahdytys_gco2kwh;
+   
+    --------------------------------------------------------
+    /* Liikenteen globaalimuuttujat - Ominaispäästötietojen esikäsittely, kulkumuodosta riippumattomia */ 
+    /* Global parameters for traffic - emission values preprocessing, independent of traffic mode */
+
+    SELECT array[bensiini, etanoli, diesel, kaasu, phev_b, phev_d, ev, kv_muu]
+        INTO kvoima_apu1 FROM liikenne.kvoima_apu1 a1
+        WHERE a1.vuosi = year;
+    SELECT array[bensiini, etanoli, diesel, kaasu, phev_b, phev_d, ev, kv_muu]
+        INTO kvoima_foss_osa FROM liikenne.kvoima_foss_osa f
+        WHERE f.vuosi = year AND f.skenaario = scenario;
+    SELECT array[bensiini, etanoli, diesel, kaasu, phev_b, phev_d, ev, kv_muu]
+        INTO kvoima_gco2kwh FROM liikenne.kvoima_gco2kwh v
+        WHERE v.vuosi = year AND v.skenaario = scenario;
+    SELECT array[bensiini, etanoli, diesel, kaasu, phev_b, phev_d, ev, kv_muu]
+        INTO kvoima_apu2 FROM liikenne.kvoima_apu2 a2
+        WHERE a2.vuosi = year;
+
+    /* Kasvihuonekaasupäästöjen keskimääräiset ominaispäästökertoimet [gCO2-ekv/kWh] määritellään
+    käyttövoimien ominaispäästökertoimien suoriteosuuksilla painotettuna keskiarvona huomioiden samalla niiden bio-osuudet. */
+
+    SELECT array(SELECT sahko_gco2kwh * unnest(kvoima_apu1) + unnest(kvoima_gco2kwh) * unnest(kvoima_foss_osa) * unnest(kvoima_apu2)) INTO gco2kwh_matrix;
+
     /* Täytetään tulostaulukko laskennan tuloksilla */
     /* Fill results table with calculations */
 
     IF localbuildings = TRUE THEN
 
-    UPDATE results SET 
-        tilat_vesi_tco2 = rakennukset.tilat_vesi_co2 * muunto_massa,
-        tilat_lammitys_tco2 = rakennukset.tilat_lammitys_co2 * muunto_massa
-    FROM
-        (SELECT DISTINCT ON (ykr2.xyind) ykr2.xyind,
-        SUM((SELECT il_prop_water_co2(erpien_ala, year, 'erpien', ykr2.rakv, gco2kwh_a, scenario, ykr2.energiam)) +
-            (SELECT il_prop_water_co2(rivita_ala, year, 'rivita', ykr2.rakv, gco2kwh_a, scenario, ykr2.energiam)) +
-            (SELECT il_prop_water_co2(askert_ala, year, 'askert', ykr2.rakv, gco2kwh_a, scenario, ykr2.energiam)) +
-            (SELECT il_prop_water_co2(liike_ala, year, 'liike', ykr2.rakv, gco2kwh_a, scenario, ykr2.energiam)) +
-            (SELECT il_prop_water_co2(tsto_ala, year, 'tsto', ykr2.rakv, gco2kwh_a, scenario, ykr2.energiam)) +
-            (SELECT il_prop_water_co2(liiken_ala, year, 'liiken', ykr2.rakv, gco2kwh_a, scenario, ykr2.energiam)) +
-            (SELECT il_prop_water_co2(hoito_ala, year, 'hoito', ykr2.rakv, gco2kwh_a, scenario, ykr2.energiam)) +
-            (SELECT il_prop_water_co2(kokoon_ala, year, 'kokoon', ykr2.rakv, gco2kwh_a, scenario, ykr2.energiam)) +
-            (SELECT il_prop_water_co2(opetus_ala, year, 'opetus', ykr2.rakv, gco2kwh_a, scenario, ykr2.energiam)) +
-            (SELECT il_prop_water_co2(teoll_ala, year, 'teoll', ykr2.rakv, gco2kwh_a, scenario, ykr2.energiam)) +
-            (SELECT il_prop_water_co2(varast_ala, year, 'varast', ykr2.rakv, gco2kwh_a, scenario, ykr2.energiam)) +
-            (SELECT il_prop_water_co2(muut_ala, year, 'muut', ykr2.rakv, gco2kwh_a, scenario, ykr2.energiam)))
-        AS tilat_vesi_co2,
-        /* Rakennusten lämmitys | Heating of buildings */
-        SUM((SELECT il_prop_heat_co2(erpien_ala, year, 'erpien', ykr2.rakv, lammitystarve, gco2kwh_a, scenario, ykr2.energiam)) +
-            (SELECT il_prop_heat_co2(rivita_ala, year, 'rivita', ykr2.rakv, lammitystarve, gco2kwh_a, scenario, ykr2.energiam)) +
-            (SELECT il_prop_heat_co2(askert_ala, year, 'askert', ykr2.rakv, lammitystarve, gco2kwh_a, scenario, ykr2.energiam)) +
-            (SELECT il_prop_heat_co2(liike_ala, year, 'liike', ykr2.rakv, lammitystarve, gco2kwh_a, scenario, ykr2.energiam)) +
-            (SELECT il_prop_heat_co2(tsto_ala, year, 'tsto', ykr2.rakv, lammitystarve, gco2kwh_a, scenario, ykr2.energiam)) +
-            (SELECT il_prop_heat_co2(liiken_ala, year, 'liiken', ykr2.rakv, lammitystarve, gco2kwh_a, scenario, ykr2.energiam)) +
-            (SELECT il_prop_heat_co2(hoito_ala, year, 'hoito', ykr2.rakv, lammitystarve, gco2kwh_a, scenario, ykr2.energiam)) +
-            (SELECT il_prop_heat_co2(kokoon_ala, year, 'kokoon', ykr2.rakv, lammitystarve, gco2kwh_a, scenario, ykr2.energiam)) +
-            (SELECT il_prop_heat_co2(opetus_ala, year, 'opetus', ykr2.rakv, lammitystarve, gco2kwh_a, scenario, ykr2.energiam)) +
-            (SELECT il_prop_heat_co2(teoll_ala, year, 'teoll', ykr2.rakv, lammitystarve, gco2kwh_a, scenario, ykr2.energiam)) +
-            (SELECT il_prop_heat_co2(varast_ala, year, 'varast', ykr2.rakv, lammitystarve, gco2kwh_a, scenario, ykr2.energiam)) +
-            (SELECT il_prop_heat_co2(muut_ala, year, 'muut', ykr2.rakv, lammitystarve, gco2kwh_a, scenario, ykr2.energiam)))
-        AS tilat_lammitys_co2
-        FROM ykr2
-        GROUP BY ykr2.xyind) rakennukset
-        WHERE rakennukset.xyind = results.xyind;
+        UPDATE results SET 
+            tilat_vesi_tco2 = rakennukset.tilat_vesi_co2 * muunto_massa,
+            tilat_lammitys_tco2 = rakennukset.tilat_lammitys_co2 * muunto_massa
+        FROM
+            (SELECT DISTINCT ON (ykr2.xyind) ykr2.xyind,
+            SUM((SELECT il_prop_water_co2(erpien_ala, year, 'erpien', ykr2.rakv, gco2kwh_a, scenario, ykr2.energiam)) +
+                (SELECT il_prop_water_co2(rivita_ala, year, 'rivita', ykr2.rakv, gco2kwh_a, scenario, ykr2.energiam)) +
+                (SELECT il_prop_water_co2(askert_ala, year, 'askert', ykr2.rakv, gco2kwh_a, scenario, ykr2.energiam)) +
+                (SELECT il_prop_water_co2(liike_ala, year, 'liike', ykr2.rakv, gco2kwh_a, scenario, ykr2.energiam)) +
+                (SELECT il_prop_water_co2(tsto_ala, year, 'tsto', ykr2.rakv, gco2kwh_a, scenario, ykr2.energiam)) +
+                (SELECT il_prop_water_co2(liiken_ala, year, 'liiken', ykr2.rakv, gco2kwh_a, scenario, ykr2.energiam)) +
+                (SELECT il_prop_water_co2(hoito_ala, year, 'hoito', ykr2.rakv, gco2kwh_a, scenario, ykr2.energiam)) +
+                (SELECT il_prop_water_co2(kokoon_ala, year, 'kokoon', ykr2.rakv, gco2kwh_a, scenario, ykr2.energiam)) +
+                (SELECT il_prop_water_co2(opetus_ala, year, 'opetus', ykr2.rakv, gco2kwh_a, scenario, ykr2.energiam)) +
+                (SELECT il_prop_water_co2(teoll_ala, year, 'teoll', ykr2.rakv, gco2kwh_a, scenario, ykr2.energiam)) +
+                (SELECT il_prop_water_co2(varast_ala, year, 'varast', ykr2.rakv, gco2kwh_a, scenario, ykr2.energiam)) +
+                (SELECT il_prop_water_co2(muut_ala, year, 'muut', ykr2.rakv, gco2kwh_a, scenario, ykr2.energiam)))
+            AS tilat_vesi_co2,
+            /* Rakennusten lämmitys | Heating of buildings */
+            SUM((SELECT il_prop_heat_co2(erpien_ala, year, 'erpien', ykr2.rakv, lammitystarve, gco2kwh_a, scenario, ykr2.energiam)) +
+                (SELECT il_prop_heat_co2(rivita_ala, year, 'rivita', ykr2.rakv, lammitystarve, gco2kwh_a, scenario, ykr2.energiam)) +
+                (SELECT il_prop_heat_co2(askert_ala, year, 'askert', ykr2.rakv, lammitystarve, gco2kwh_a, scenario, ykr2.energiam)) +
+                (SELECT il_prop_heat_co2(liike_ala, year, 'liike', ykr2.rakv, lammitystarve, gco2kwh_a, scenario, ykr2.energiam)) +
+                (SELECT il_prop_heat_co2(tsto_ala, year, 'tsto', ykr2.rakv, lammitystarve, gco2kwh_a, scenario, ykr2.energiam)) +
+                (SELECT il_prop_heat_co2(liiken_ala, year, 'liiken', ykr2.rakv, lammitystarve, gco2kwh_a, scenario, ykr2.energiam)) +
+                (SELECT il_prop_heat_co2(hoito_ala, year, 'hoito', ykr2.rakv, lammitystarve, gco2kwh_a, scenario, ykr2.energiam)) +
+                (SELECT il_prop_heat_co2(kokoon_ala, year, 'kokoon', ykr2.rakv, lammitystarve, gco2kwh_a, scenario, ykr2.energiam)) +
+                (SELECT il_prop_heat_co2(opetus_ala, year, 'opetus', ykr2.rakv, lammitystarve, gco2kwh_a, scenario, ykr2.energiam)) +
+                (SELECT il_prop_heat_co2(teoll_ala, year, 'teoll', ykr2.rakv, lammitystarve, gco2kwh_a, scenario, ykr2.energiam)) +
+                (SELECT il_prop_heat_co2(varast_ala, year, 'varast', ykr2.rakv, lammitystarve, gco2kwh_a, scenario, ykr2.energiam)) +
+                (SELECT il_prop_heat_co2(muut_ala, year, 'muut', ykr2.rakv, lammitystarve, gco2kwh_a, scenario, ykr2.energiam)))
+            AS tilat_lammitys_co2
+            FROM ykr2
+            GROUP BY ykr2.xyind) rakennukset
+            WHERE rakennukset.xyind = results.xyind;
 
     ELSE 
 
@@ -467,36 +478,10 @@ BEGIN
         GROUP BY ykr2.xyind) rakennukset
         WHERE rakennukset.xyind = results.xyind;
    
-    IF targetYear IS NOT NULL THEN
-        UPDATE results
-        SET 
-            rak_uudis_tco2 = rakennukset.rak_uudis_co2 * muunto_massa
-        FROM
-            (SELECT DISTINCT ON (ykr2.xyind) ykr2.xyind,
-            SUM(
-                (SELECT il_build_new_co2(erpien_ala, year, 'erpien', scenario)) +
-                (SELECT il_build_new_co2(rivita_ala, year, 'rivita', scenario)) +
-                (SELECT il_build_new_co2(askert_ala, year, 'askert', scenario)) +
-                (SELECT il_build_new_co2(liike_ala, year, 'liike', scenario)) +
-                (SELECT il_build_new_co2(tsto_ala, year, 'tsto', scenario)) +
-                (SELECT il_build_new_co2(liiken_ala, year, 'liiken', scenario)) +
-                (SELECT il_build_new_co2(hoito_ala, year, 'hoito', scenario)) +
-                (SELECT il_build_new_co2(kokoon_ala, year, 'kokoon', scenario)) +
-                (SELECT il_build_new_co2(opetus_ala, year, 'opetus', scenario)) +
-                (SELECT il_build_new_co2(teoll_ala, year, 'teoll', scenario)) +
-                (SELECT il_build_new_co2(varast_ala, year, 'varast', scenario)) +
-                (SELECT il_build_new_co2(muut_ala, year, 'muut', scenario)))
-            AS rak_uudis_co2
-            FROM ykr2 WHERE ykr2.rakv = year
-            GROUP BY ykr2.xyind) rakennukset
-            WHERE rakennukset.xyind = results.xyind;
-
-    END IF;
-
     IF refined = FALSE THEN
+
         UPDATE results
-        SET 
-            sahko_palv_tco2 = rakennukset.sahko_palv_co2 * muunto_massa,
+        SET sahko_palv_tco2 = rakennukset.sahko_palv_co2 * muunto_massa,
             sahko_tv_tco2 = rakennukset.sahko_tv_co2 * muunto_massa,
             liikenne_tv_tco2 = rakennukset.liikenne_tv_co2 * muunto_massa,
             liikenne_palv_tco2 = rakennukset.liikenne_palv_co2 * muunto_massa
@@ -544,11 +529,12 @@ BEGIN
             AS liikenne_palv_co2
             FROM ykr2
             GROUP BY ykr2.xyind) rakennukset
-            WHERE rakennukset.xyind = results.xyind;
+        WHERE rakennukset.xyind = results.xyind;
+        
     ELSE 
-     UPDATE results
-        SET 
-            sahko_palv_tco2 = rakennukset.sahko_palv_co2 * muunto_massa,
+
+        UPDATE results
+        SET sahko_palv_tco2 = rakennukset.sahko_palv_co2 * muunto_massa,
             sahko_tv_tco2 = rakennukset.sahko_tv_co2 * muunto_massa,
             liikenne_tv_tco2 = rakennukset.liikenne_tv_co2 * muunto_massa,
             liikenne_palv_tco2 = rakennukset.liikenne_palv_co2 * muunto_massa
@@ -621,16 +607,37 @@ BEGIN
             AS liikenne_palv_co2
             FROM ykr2
             GROUP BY ykr2.xyind) rakennukset
-            WHERE rakennukset.xyind = results.xyind;
-        END IF;
+        WHERE rakennukset.xyind = results.xyind;
+    END IF;
 
     IF targetYear IS NOT NULL THEN 
-            /* Lasketaan rakennusten purkamisen päästöt */
+
+        UPDATE results SET
+            rak_uudis_tco2 = rakennukset.rak_uudis_co2 * muunto_massa
+        FROM
+            (SELECT DISTINCT ON (ykr2.xyind) ykr2.xyind,
+            SUM((SELECT il_build_new_co2(erpien_ala, year, 'erpien', scenario)) +
+                (SELECT il_build_new_co2(rivita_ala, year, 'rivita', scenario)) +
+                (SELECT il_build_new_co2(askert_ala, year, 'askert', scenario)) +
+                (SELECT il_build_new_co2(liike_ala, year, 'liike', scenario)) +
+                (SELECT il_build_new_co2(tsto_ala, year, 'tsto', scenario)) +
+                (SELECT il_build_new_co2(liiken_ala, year, 'liiken', scenario)) +
+                (SELECT il_build_new_co2(hoito_ala, year, 'hoito', scenario)) +
+                (SELECT il_build_new_co2(kokoon_ala, year, 'kokoon', scenario)) +
+                (SELECT il_build_new_co2(opetus_ala, year, 'opetus', scenario)) +
+                (SELECT il_build_new_co2(teoll_ala, year, 'teoll', scenario)) +
+                (SELECT il_build_new_co2(varast_ala, year, 'varast', scenario)) +
+                (SELECT il_build_new_co2(muut_ala, year, 'muut', scenario)))
+            AS rak_uudis_co2
+            FROM ykr2 WHERE ykr2.rakv = year
+            GROUP BY ykr2.xyind) rakennukset
+        WHERE rakennukset.xyind = results.xyind;
+
+        /* Lasketaan rakennusten purkamisen päästöt */
         /* Calculating emissions for demolishing buildings */
         UPDATE results SET rak_purku_tco2 = poistot.rak_purku_co2 * muunto_massa
             FROM (SELECT p.xyind,
-                SUM(
-                (SELECT il_build_demolish_co2(p.erpien::real, year, 'erpien', scenario)) +
+                SUM((SELECT il_build_demolish_co2(p.erpien::real, year, 'erpien', scenario)) +
                 (SELECT il_build_demolish_co2(p.rivita::real, year, 'rivita', scenario)) +
                 (SELECT il_build_demolish_co2(p.askert::real, year, 'askert', scenario)) +
                 (SELECT il_build_demolish_co2(p.liike::real, year, 'liike', scenario)) +
@@ -646,6 +653,7 @@ BEGIN
                 FROM poistuma_alat p
                 GROUP BY p.xyind) poistot
         WHERE results.xyind = poistot.xyind;
+        
         /* Poistetaan purkulaskennoissa käytetty väliaikainen taulu */
         /* Remove the temporary table used in demolishing calculationg */
         DROP TABLE IF EXISTS poistuma_alat;
@@ -671,16 +679,6 @@ BEGIN
         year := initial_year;
     END IF;
 
-    ALTER TABLE results
-        ADD COLUMN IF NOT EXISTS sum_yhteensa_tco2 real,
-        ADD COLUMN IF NOT EXISTS sum_lammonsaato_tco2 real,
-        ADD COLUMN IF NOT EXISTS sum_liikenne_tco2 real,
-        ADD COLUMN IF NOT EXISTS sum_sahko_tco2 real,
-        ADD COLUMN IF NOT EXISTS sum_rakentaminen_tco2 real,
-        ADD COLUMN IF NOT EXISTS asukkaat int,
-        ADD COLUMN IF NOT EXISTS vuosi date,
-        ADD COLUMN IF NOT EXISTS geom geometry(MultiPolygon, 3067);
-
     UPDATE results r SET
         vuosi = to_date(year::varchar, 'YYYY'),
         sum_yhteensa_tco2 = r.tilat_vesi_tco2 + r.tilat_lammitys_tco2 + r.tilat_jaahdytys_tco2 + r.sahko_kiinteistot_tco2 + r.sahko_kotitaloudet_tco2 +
@@ -690,8 +688,8 @@ BEGIN
         sum_sahko_tco2 = r.sahko_kiinteistot_tco2 + r.sahko_kotitaloudet_tco2 + r.sahko_palv_tco2 + r.sahko_tv_tco2,
         sum_rakentaminen_tco2 = r.rak_korjaussaneeraus_tco2 + r.rak_purku_tco2 + r.rak_uudis_tco2;
     
-    UPDATE results res SET geom = ykr1.geom, asukkaat = ykr1.v_yht FROM ykr1 WHERE res.xyind = ykr1.xyind;
-
+    UPDATE results res SET kerrosala = r.rakyht_ala FROM (SELECT distinct on (ykr2.xyind) ykr2.xyind, SUM(ykr2.rakyht_ala) rakyht_ala from ykr2 WHERE ykr2.rakv::int != 0 group by ykr2.xyind) r WHERE res.xyind = r.xyind;
+    UPDATE results res SET uz = (CASE WHEN res.uz = 9993 THEN 3 WHEN res.uz = 837101 THEN 10 ELSE res.uz END);
     RETURN QUERY SELECT * from results WHERE results.sum_yhteensa_tco2 > 0;
     DROP TABLE results;
 
