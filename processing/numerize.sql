@@ -1,14 +1,14 @@
 DROP FUNCTION IF EXISTS public.il_numerize;
 CREATE OR REPLACE FUNCTION
 public.il_numerize(
-    ykr_taulu text,
+    ykr_taulu regclass,
     baseYear integer,
     targetYear integer,
     calculationYear integer,
     area varchar,
-    kt_taulu text,
-    kv_taulu text default null,
-    jl_taulu text default null
+    kt_taulu regclass,
+    kv_taulu regclass default null,
+    jl_taulu regclass default null
 )
 RETURNS TABLE (
     geom geometry,
@@ -43,31 +43,31 @@ SELECT aoi.km2hm2 FROM aluejaot.alueet aoi WHERE kunta = area OR maakunta = area
 CREATE TEMP TABLE uz AS SELECT * FROM aluejaot."ykr_vyohykkeet";
     CREATE INDEX ON uz USING GIST (geom);
 
-EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr AS SELECT * FROM ' || ykr_taulu;
+EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS ykr AS SELECT * FROM %s', ykr_taulu);
     CREATE INDEX ON ykr USING GIST (geom);
 
-EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS kt AS SELECT * FROM ' || quote_ident(kt_taulu);
+EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS kt AS SELECT * FROM %s', kt_taulu);
     SELECT geometrytype(kt.geom) from kt into kt_gt;
-    EXECUTE 'ALTER TABLE kt ALTER COLUMN geom TYPE geometry('|| kt_gt ||', 3067) USING ST_force2d(ST_Transform(geom, 3067))';
+    EXECUTE format('ALTER TABLE kt ALTER COLUMN geom TYPE geometry(%L, 3067) USING ST_force2d(ST_Transform(geom, 3067))', kt_gt);
     CREATE INDEX ON kt USING GIST (geom);
 
 IF kv_taulu IS NOT NULL THEN
-    EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS kv AS SELECT * FROM ' || quote_ident(kv_taulu);
+    EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS kv AS SELECT * FROM %s', kv_taulu);
     SELECT geometrytype(kv.geom) from kv into kv_gt;
-    EXECUTE 'ALTER TABLE kv ALTER COLUMN geom TYPE geometry('|| kv_gt ||', 3067) USING ST_force2d(ST_Transform(geom, 3067))';
+    EXECUTE format('ALTER TABLE kv ALTER COLUMN geom TYPE geometry(%L, 3067) USING ST_force2d(ST_Transform(geom, 3067))', kv_gt);
     CREATE INDEX ON kv USING GIST (geom);
 END IF;
 
 IF jl_taulu IS NOT NULL THEN
-    EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS jl AS SELECT * FROM ' || quote_ident(jl_taulu);
+    EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS jl AS SELECT * FROM %s', jl_taulu);
     SELECT geometrytype(jl.geom) from jl into jl_gt;
-    EXECUTE 'ALTER TABLE jl ALTER COLUMN geom TYPE geometry('|| jl_gt ||', 3067) USING ST_force2d(ST_Transform(geom, 3067))';
+    EXECUTE format('ALTER TABLE jl ALTER COLUMN geom TYPE geometry(%L, 3067) USING ST_force2d(ST_Transform(geom, 3067))', jl_gt);
     CREATE INDEX ON jl USING GIST (geom);
 END IF;
 
-SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = kt_taulu AND column_name='k_poistuma') INTO poistuma_exists;
-SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = kt_taulu AND column_name='k_aloitusv') INTO aloitusv_exists;
-SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = kt_taulu AND column_name='k_valmisv') INTO valmisv_exists;
+EXECUTE format('SELECT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = %L::regclass AND attname = %L AND NOT attisdropped)', kt_taulu, 'k_poistuma') INTO poistuma_exists;
+EXECUTE format('SELECT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = %L::regclass AND attname = %L AND NOT attisdropped)', kt_taulu, 'k_aloitusv') INTO poistuma_exists;
+EXECUTE format('SELECT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = %L::regclass AND attname = %L AND NOT attisdropped)', kt_taulu, 'k_valmisv') INTO poistuma_exists;
 
 ALTER TABLE ykr
     ADD COLUMN IF NOT EXISTS k_ap_ala real default 0,
@@ -268,8 +268,8 @@ SELECT * FROM
     (SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind, 10 AS vyoh
     FROM ykr, uz, keskusverkko /* keskus */
     /* Search for grid cells within current UZ central areas delineation */
-    WHERE ykr.maa_ha != 0 AND (st_within(st_centroid(ykr.geom), uz.geom) AND uz.vyoh IN (10,11,12, 837101))
-        OR (st_dwithin(YKR.geom, uz.geom, 25) AND uz.vyoh IN (10,11,12, 837101))
+    WHERE ykr.maa_ha != 0 AND (st_within(st_centroid(ykr.geom), uz.geom) AND uz.vyoh IN (10,11,12,837101))
+        OR (st_dwithin(YKR.geom, uz.geom, 25) AND uz.vyoh IN (10,11,12,837101))
         AND (ykr.alueteho > 0.05 AND ykr.tp_yht > 0)
         AND (ykr.alueteho > 0.2 AND ykr.v_yht >= 100 AND YKR.tp_yht > 0)
         /* Select only edge neighbours, no corner touchers */

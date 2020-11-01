@@ -1,8 +1,8 @@
 CREATE OR REPLACE FUNCTION
 public.il_preprocess(
-    aoi text, -- Tutkimusalue | area of interest
-    ykr_v text, -- YKR-väestödata | YKR population data
-    ykr_tp text -- YKR-työpaikkadata | YKR workplace data
+    aoi regclass, -- Tutkimusalue | area of interest
+    ykr_v regclass, -- YKR-väestödata | YKR population data
+    ykr_tp regclass -- YKR-työpaikkadata | YKR workplace data
 )
 RETURNS TABLE (
     geom geometry(MultiPolygon, 3067),
@@ -16,7 +16,7 @@ DECLARE
     subquery varchar;
 BEGIN
 
-EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr AS SELECT ykr.geom, ykr.xyind FROM aluejaot."YKR_perusruudukko" ykr WHERE ST_Intersects(ykr.geom, (SELECT rajaus.geom FROM ' || quote_ident(aoi) ||' rajaus))';
+EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS ykr AS SELECT ykr.geom, ykr.xyind::varchar FROM aluejaot."YKR_perusruudukko" ykr WHERE ST_Intersects(ykr.geom, (SELECT rajaus.geom FROM %s rajaus))', aoi);
 
 ALTER TABLE ykr
     ADD COLUMN IF NOT EXISTS vyoh integer,
@@ -28,8 +28,8 @@ CREATE INDEX ON ykr USING GIST (geom);
     
 /* Liitetään UZ, väestö ja työpaikkatiedot */
 UPDATE ykr SET vyoh = uz.vyoh FROM aluejaot."ykr_vyohykkeet" AS uz WHERE ST_WITHIN(ST_CENTROID(ykr.geom), uz.geom);
-EXECUTE 'UPDATE ykr SET v_yht = v.v_yht FROM '|| quote_ident(ykr_v) ||' v WHERE v.xyind IN (SELECT ykr.xyind FROM ykr) AND v.xyind = ykr.xyind';
-EXECUTE 'UPDATE ykr SET tp_yht = tp.tp_yht FROM '|| quote_ident(ykr_tp) ||' tp WHERE tp.xyind IN (SELECT ykr.xyind FROM ykr) AND tp.xyind = ykr.xyind';
+EXECUTE format('UPDATE ykr SET v_yht = v.v_yht FROM %s v WHERE v.xyind::varchar IN (SELECT ykr.xyind::varchar FROM ykr) AND v.xyind::varchar = ykr.xyind::varchar', ykr_v);
+EXECUTE format('UPDATE ykr SET tp_yht = tp.tp_yht FROM %s tp WHERE tp.xyind::varchar IN (SELECT ykr.xyind::varchar FROM ykr) AND tp.xyind::varchar = ykr.xyind::varchar', ykr_tp);
 
 /* Calculate distances to current centers */
 UPDATE ykr SET centdist = sq.centdist FROM

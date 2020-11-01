@@ -1,8 +1,8 @@
 DROP FUNCTION IF EXISTS public.il_update_buildings_refined;
 CREATE OR REPLACE FUNCTION
 public.il_update_buildings_refined(
-    rak_taulu text,
-    ykr_taulu text,
+    rak_taulu regclass,
+    ykr_taulu regclass,
     calculationYear int, -- Vuosi, jonka perusteella päästöt lasketaan / viitearvot haetaan
     baseYear int,
 	targetYear int,
@@ -70,8 +70,8 @@ SELECT 1::real / laskenta_length INTO step;
 SELECT (calculationYear - baseYear + 1) * step INTO globalweight;
 SELECT 1 - globalweight INTO localweight;
 
-EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr AS SELECT xyind, vyoh, k_ap_ala, k_ar_ala, k_ak_ala, k_muu_ala, k_poistuma FROM ' || quote_ident(ykr_taulu) || ' WHERE (k_ap_ala IS NOT NULL AND k_ap_ala != 0) OR (k_ar_ala IS NOT NULL AND k_ar_ala != 0) OR (k_ak_ala IS NOT NULL AND k_ak_ala != 0) OR (k_muu_ala IS NOT NULL AND k_muu_ala != 0) OR (k_poistuma IS NOT NULL AND k_poistuma != 0)';
-EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS rak AS SELECT xyind, rakv::int, energiam, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, myymal_hyper_ala :: int, myymal_super_ala :: int, myymal_pien_ala :: int, myymal_muu_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, teoll_kaivos_ala :: int, teoll_elint_ala :: int, teoll_tekst_ala :: int, teoll_puu_ala :: int, teoll_paper_ala :: int, teoll_kemia_ala :: int, teoll_miner_ala :: int, teoll_mjalos_ala :: int, teoll_metal_ala :: int, teoll_kone_ala :: int, teoll_muu_ala :: int, teoll_energ_ala :: int, teoll_vesi_ala :: int, teoll_yhdysk_ala :: int, varast_ala :: int, muut_ala :: int, teoll_lkm :: smallint, varast_lkm :: smallint FROM ' || quote_ident(rak_taulu) ||' WHERE rakv::int != 0'; -- AND xyind IN (SELECT ykr.xyind from ykr)
+EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS ykr AS SELECT xyind::varchar, vyoh, k_ap_ala, k_ar_ala, k_ak_ala, k_muu_ala, k_poistuma FROM %s WHERE (k_ap_ala IS NOT NULL AND k_ap_ala != 0) OR (k_ar_ala IS NOT NULL AND k_ar_ala != 0) OR (k_ak_ala IS NOT NULL AND k_ak_ala != 0) OR (k_muu_ala IS NOT NULL AND k_muu_ala != 0) OR (k_poistuma IS NOT NULL AND k_poistuma != 0)', ykr_taulu);
+EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS rak AS SELECT xyind::varchar, rakv::int, energiam, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, myymal_hyper_ala :: int, myymal_super_ala :: int, myymal_pien_ala :: int, myymal_muu_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, teoll_kaivos_ala :: int, teoll_elint_ala :: int, teoll_tekst_ala :: int, teoll_puu_ala :: int, teoll_paper_ala :: int, teoll_kemia_ala :: int, teoll_miner_ala :: int, teoll_mjalos_ala :: int, teoll_metal_ala :: int, teoll_kone_ala :: int, teoll_muu_ala :: int, teoll_energ_ala :: int, teoll_vesi_ala :: int, teoll_yhdysk_ala :: int, varast_ala :: int, muut_ala :: int, teoll_lkm :: smallint, varast_lkm :: smallint FROM %s WHERE rakv::int != 0', rak_taulu);
 
 /* Haetaan globaalit lämmitysmuotojakaumat laskentavuodelle ja -skenaariolle */
 /* Fetching global heating ratios for current calculation year and scenario */
@@ -133,7 +133,7 @@ UPDATE rak b SET
     varast_lkm = (CASE WHEN varast > 0 AND b.varast_lkm - varast / varast_koko > 0 THEN b.varast_lkm - varast / varast_koko ELSE b.varast_lkm END)
 FROM (
 WITH poistuma AS (
-    SELECT ykr.xyind, (CASE WHEN defaultdemolition = TRUE THEN 0.0015 ELSE SUM(k_poistuma) END) AS poistuma FROM ykr GROUP BY ykr.xyind
+    SELECT ykr.xyind::varchar, (CASE WHEN defaultdemolition = TRUE THEN 0.0015 ELSE SUM(k_poistuma) END) AS poistuma FROM ykr GROUP BY ykr.xyind
 ),
 buildings AS (
 	SELECT rakennukset.xyind, rakennukset.rakv,
@@ -172,7 +172,7 @@ buildings AS (
 		CASE WHEN defaultdemolition = TRUE THEN rakennukset.varast_ala :: real ELSE rakennukset.varast_ala:: real / NULLIF(grouped.rakyht_ala, 0) END varast,
 		CASE WHEN defaultdemolition = TRUE THEN rakennukset.muut_ala :: real ELSE rakennukset.muut_ala :: real / NULLIF(grouped.rakyht_ala, 0) END muut
 	FROM rak rakennukset JOIN
-	(SELECT build2.xyind, SUM(build2.rakyht_ala) rakyht_ala FROM rak build2 GROUP BY build2.xyind) grouped
+	(SELECT build2.xyind::varchar, SUM(build2.rakyht_ala) rakyht_ala FROM rak build2 GROUP BY build2.xyind) grouped
 	ON grouped.xyind = rakennukset.xyind
 	WHERE rakennukset.rakv != calculationYear
 )
@@ -319,7 +319,7 @@ CREATE TEMP TABLE IF NOT EXISTS local_jakauma AS
 WITH cte AS (
 WITH
 	index AS (
-	SELECT distinct on (ykr.xyind) ykr.xyind FROM ykr
+	SELECT distinct on (ykr.xyind) ykr.xyind::varchar FROM ykr
 	), kaukolampo AS (
     SELECT rak.xyind,
 		SUM(rak.rakyht_ala) as rakyht,

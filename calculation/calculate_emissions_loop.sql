@@ -1,19 +1,19 @@
 DROP FUNCTION IF EXISTS il_calculate_emissions_loop;
 CREATE OR REPLACE FUNCTION
 public.il_calculate_emissions_loop(
-    ykr_v text, -- YKR-väestödata | YKR population data
-    ykr_tp text, -- YKR-työpaikkadata | YKR workplace data
-    ykr_rakennukset text, -- ykr rakennusdatan taulunimi
-    aoi text, -- Tutkimusalue | area of interest
+    ykr_v regclass, -- YKR-väestödata | YKR population data
+    ykr_tp regclass, -- YKR-työpaikkadata | YKR workplace data
+    ykr_rakennukset regclass, -- ykr rakennusdatan taulunimi
+    aoi regclass, -- Tutkimusalue | area of interest
     skenaario varchar, -- PITKO:n mukainen skenaario
     metodi varchar, -- Päästöallokointimenetelmä, 'em' tai 'hjm'
     sahkolaji varchar, -- Sähkön päästölaji, 'hankinta' tai 'tuotanto'
     alue varchar, -- Alue, jolle päästöjä ollaan laskemassa
     baseYear integer, -- Laskennan lähtövuosi
     targetYear integer, -- Laskennan tavoitevuosi
-    kt_taulu text, -- Taulu, jossa käyttötarkoitusalueet tai vastaavat
-    kv_taulu text default null, -- Taulu, jossa keskusverkkotiedot 
-    jl_taulu text default null -- Taulu, jossa intensiivinen joukkoliikennejärjestelmä
+    kt_taulu regclass, -- Taulu, jossa käyttötarkoitusalueet tai vastaavat
+    kv_taulu regclass default null, -- Taulu, jossa keskusverkkotiedot 
+    jl_taulu regclass default null -- Taulu, jossa intensiivinen joukkoliikennejärjestelmä
 )
 RETURNS TABLE(
     xyind varchar(13),

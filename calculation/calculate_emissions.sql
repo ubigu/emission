@@ -1,10 +1,10 @@
 DROP FUNCTION IF EXISTS il_calculate_emissions;
 CREATE OR REPLACE FUNCTION
 public.il_calculate_emissions(
-    ykr_v text, -- YKR-väestödata | YKR population data
-    ykr_tp text, -- YKR-työpaikkadata | YKR workplace data
-    ykr_rakennukset text, -- ykr rakennusdatan taulunimi
-    aoi text, -- Tutkimusalue | area of interest
+    ykr_v regclass, -- YKR-väestödata | YKR population data
+    ykr_tp regclass, -- YKR-työpaikkadata | YKR workplace data
+    ykr_rakennukset regclass, -- ykr rakennusdatan taulunimi
+    aoi regclass, -- Tutkimusalue | area of interest
     year integer, -- Laskennan viitearvojen vuosi || calculation reference year
     scenario varchar, -- PITKO-kehitysskenaario
     method varchar, -- Päästöallokoinnin laskentamenetelmä
@@ -12,9 +12,9 @@ public.il_calculate_emissions(
     area varchar, -- Alue, jolle päästöjä ollaan laskemassa
     baseYear integer, -- Laskennan lähtövuosi
     targetYear integer default null, -- Laskennan tavoitevuosi
-    kt_taulu text default null, -- Taulu, jossa käyttötarkoitusalueet tai vastaavat
-    kv_taulu text default null, -- Taulu, jossa keskusverkkotiedot 
-    jl_taulu text default null) -- Taulu, jossa intensiivinen joukkoliikennejärjestelmä    
+    kt_taulu regclass default null, -- Taulu, jossa käyttötarkoitusalueet tai vastaavat
+    kv_taulu regclass default null, -- Taulu, jossa kkreskusverkkotiedot 
+    jl_taulu regclass default null) -- Taulu, jossa intensiivinen joukkoliikennejärjestelmä    
 RETURNS TABLE(
     xyind varchar(13),
     tilat_vesi_tco2 real,
@@ -64,7 +64,6 @@ DECLARE
     sahko_as real;
 
     /* Traffic globals */
-    new_lj boolean;
     kvoima_apu1 real[]; -- Dummy-muuttuja, jolla huomioidaan laskennassa sähkön käyttö sähköautoissa, pistokehybrideissä ja polttokennoautojen vedyn tuotannossa [ei yksikköä]. Lukuarvo riippuu käyttövoimasta ja laskentavuodesta.
     kvoima_foss_osa real[]; -- Käyttövoimien fossiiliset osuudet [ei yksikköä]. Lukuarvo riippuu taustaskenaariosta, laskentavuodesta ja käyttövoimasta.
     kvoima_gco2kwh real[]; -- Käyttövoimien  kasvihuonekaasujen ominaispäästökerroin käytettyä energiayksikköä kohti [gCO2-ekv/kWh]. Lukuarvo riippuu taustaskenaariosta, laskentavuodesta (ja käyttövoimasta).
@@ -91,11 +90,11 @@ BEGIN
 
     /* Tarkistetaan, onko käytössä paikallisesti johdettua rakennusdataa, joka sisältää energiamuototiedon */
     /* Checking, whether or not local building data with energy source information is present */
-    SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = ykr_rakennukset AND column_name='energiam') INTO localbuildings;
+    EXECUTE format('SELECT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = %L::regclass AND attname = %L AND NOT attisdropped)', ykr_rakennukset, 'energiam') INTO localbuildings;
 
     /* Tarkistetaan, onko käytössä paikallisesti johdettua rakennusdataa, joka sisältää tarkemmat TOL-johdannaiset */
     /* Checking, whether or not local building data with detailed usage source information is present */
-    SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = ykr_rakennukset AND column_name='myymal_pien_ala') INTO refined;
+    EXECUTE format('SELECT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = %L::regclass AND attname = %L AND NOT attisdropped)', ykr_rakennukset, 'myymal_pien_ala') INTO refined;
 
     /* Luodaan väliaikainen taulu, joka sisältää mm. YKR väestö- ja työpaikkatiedot */
     /* Creating a temporary table with e.g. YKR population and workplace data */
@@ -103,12 +102,12 @@ BEGIN
         RAISE NOTICE 'Preprocessing raw data';
         /* Luodaan väliaikainen taulu, joka sisältää mm. YKR väestö- ja työpaikkatiedot */
         /* Creating a temporary table with e.g. YKR population and workplace data */
-        EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr1 AS SELECT * FROM (SELECT * FROM il_preprocess('''|| aoi ||''', '''|| ykr_v ||''', '''|| ykr_tp ||''')) ykvtp';
+        EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS ykr1 AS SELECT * FROM (SELECT * FROM il_preprocess(%L::regclass, %L::regclass, %L::regclass)) ykvtp', aoi, ykr_v, ykr_tp);
         CREATE INDEX ON ykr1 (vyoh);
     END IF;
 
     IF targetYear IS NOT NULL THEN
-        
+
         /* Numeeristetaan suunnitelma-aineistoa | 'Numerizing' the given plan data */
         CREATE TEMP TABLE IF NOT EXISTS ykr1_temp AS SELECT * FROM il_numerize('ykr1', baseYear, targetYear, year, area, kt_taulu, kv_taulu, jl_taulu);
         DROP TABLE IF EXISTS ykr1;
@@ -117,14 +116,12 @@ BEGIN
         /* Luodaan pohja-aineisto rakennusdatan työstölle */
         /* Building a template for manipulating building data */
         IF year = baseYear THEN
-            EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS rak_initial AS SELECT * FROM ' || quote_ident(ykr_rakennukset) || ' WHERE rakv::int != 0 AND xyind IN (SELECT ykr1.xyind FROM ykr1) AND rakv::int < ' || year;
+            EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS rak_initial AS SELECT * FROM %s WHERE rakv::int != 0 AND xyind IN (SELECT ykr1.xyind FROM ykr1) AND rakv::int < %L', ykr_rakennukset, year);
         ELSE 
             ALTER TABLE ykr2 RENAME to rak_initial;
         END IF;
 
     END IF;
-
-    SELECT EXISTS (SELECT 1 FROM ykr1 WHERE vyoh = 9993) INTO new_lj;
 
     --------------------------------------------------------
 
@@ -164,7 +161,7 @@ BEGIN
 
             CREATE TEMP TABLE poistuma_alat AS 
             WITH poistuma AS (
-                SELECT ykr1.xyind, SUM(k_poistuma) AS poistuma FROM ykr1 GROUP BY ykr1.xyind
+                SELECT ykr1.xyind::varchar, SUM(k_poistuma) AS poistuma FROM ykr1 GROUP BY ykr1.xyind
             ),
             buildings AS (
                 SELECT rak_initial.xyind, 
@@ -207,13 +204,13 @@ BEGIN
         RAISE NOTICE 'Updating building data';
         IF localbuildings = true THEN
             IF refined = true THEN 
-                EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr2 AS SELECT xyind, rakv::int, energiam, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, myymal_pien_ala :: int, myymal_super_ala :: int, myymal_hyper_ala :: int, myymal_muu_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, teoll_elint_ala :: int, teoll_tekst_ala :: int, teoll_puu_ala :: int, teoll_paper_ala :: int, teoll_miner_ala :: int, teoll_kemia_ala :: int, teoll_kone_ala :: int, teoll_mjalos_ala :: int, teoll_metal_ala :: int, teoll_vesi_ala :: int, teoll_energ_ala :: int, teoll_yhdysk_ala :: int, teoll_kaivos_ala :: int, teoll_muu_ala :: int, varast_ala :: int, muut_ala :: int, teoll_lkm :: int, varast_lkm :: int FROM (SELECT * FROM il_update_buildings_refined(''rak_initial'', ''ykr1'', '|| year ||', '|| baseYear || ', '|| targetYear||', '''|| scenario ||''')) updatedbuildings';
+                EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS ykr2 AS SELECT xyind::varchar, rakv::int, energiam, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, myymal_pien_ala :: int, myymal_super_ala :: int, myymal_hyper_ala :: int, myymal_muu_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, teoll_elint_ala :: int, teoll_tekst_ala :: int, teoll_puu_ala :: int, teoll_paper_ala :: int, teoll_miner_ala :: int, teoll_kemia_ala :: int, teoll_kone_ala :: int, teoll_mjalos_ala :: int, teoll_metal_ala :: int, teoll_vesi_ala :: int, teoll_energ_ala :: int, teoll_yhdysk_ala :: int, teoll_kaivos_ala :: int, teoll_muu_ala :: int, varast_ala :: int, muut_ala :: int, teoll_lkm :: int, varast_lkm :: int FROM (SELECT * FROM il_update_buildings_refined(''rak_initial'', ''ykr1'', %L, %L, %L, %L)) updatedbuildings', year, baseYear, targetYear, scenario);
             ELSE 
-                EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr2 AS SELECT xyind, rakv::int, energiam, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, varast_ala :: int, muut_ala :: int, teoll_lkm :: int, varast_lkm :: int FROM (SELECT * FROM il_update_buildings_local(''rak_initial'', ''ykr1'', '|| year ||', '|| baseYear || ', '|| targetYear||', '''|| scenario ||''')) updatedbuildings';
+                EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS ykr2 AS SELECT xyind::varchar, rakv::int, energiam, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, varast_ala :: int, muut_ala :: int, teoll_lkm :: int, varast_lkm :: int FROM (SELECT * FROM il_update_buildings_local(''rak_initial'', ''ykr1'', %L, %L, %L, %L)) updatedbuildings', year, baseYear, targetYear, scenario);
             END IF;
             CREATE INDEX ON ykr2 (rakv, energiam);
         ELSE
-            EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr2 AS SELECT xyind, rakv::int, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, varast_ala :: int, muut_ala :: int, teoll_lkm :: int, varast_lkm :: int FROM (SELECT * FROM il_update_buildings(''rak_initial'', ''ykr1'', ' || year ||')) updatedbuildings';
+            EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS ykr2 AS SELECT xyind::varchar, rakv::int, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, varast_ala :: int, muut_ala :: int, teoll_lkm :: int, varast_lkm :: int FROM (SELECT * FROM il_update_buildings(''rak_initial'', ''ykr1'', %L)) updatedbuildings', year);
             CREATE INDEX ON ykr2 (rakv);        
         END IF;
         DROP TABLE IF EXISTS rak_initial;
@@ -224,13 +221,13 @@ BEGIN
         /* Choose correct query for creating a temporary building data table depending on the type of building data in use */
         IF localbuildings = true THEN
             IF refined = true THEN
-                EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr2 AS SELECT xyind, rakv::int, energiam, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, myymal_pien_ala :: int, myymal_super_ala :: int, myymal_hyper_ala :: int, myymal_muu_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, teoll_elint_ala :: int, teoll_tekst_ala :: int, teoll_puu_ala :: int, teoll_paper_ala :: int, teoll_miner_ala :: int, teoll_kemia_ala :: int, teoll_kone_ala :: int, teoll_mjalos_ala :: int, teoll_metal_ala :: int, teoll_vesi_ala :: int, teoll_energ_ala :: int, teoll_yhdysk_ala :: int, teoll_kaivos_ala :: int, teoll_muu_ala :: int, varast_ala :: int, muut_ala :: int, teoll_lkm :: int, varast_lkm :: int FROM '|| quote_ident(ykr_rakennukset) ||' WHERE rakv::int != 0 AND xyind IN (SELECT ykr1.xyind FROM ykr1)';
+                EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS ykr2 AS SELECT xyind::varchar, rakv::int, energiam, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, myymal_pien_ala :: int, myymal_super_ala :: int, myymal_hyper_ala :: int, myymal_muu_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, teoll_elint_ala :: int, teoll_tekst_ala :: int, teoll_puu_ala :: int, teoll_paper_ala :: int, teoll_miner_ala :: int, teoll_kemia_ala :: int, teoll_kone_ala :: int, teoll_mjalos_ala :: int, teoll_metal_ala :: int, teoll_vesi_ala :: int, teoll_energ_ala :: int, teoll_yhdysk_ala :: int, teoll_kaivos_ala :: int, teoll_muu_ala :: int, varast_ala :: int, muut_ala :: int, teoll_lkm :: int, varast_lkm :: int FROM %s WHERE rakv::int != 0 AND xyind IN (SELECT ykr1.xyind FROM ykr1)', ykr_rakennukset);
             ELSE 
-                EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr2 AS SELECT xyind, rakv::int, energiam, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, varast_ala :: int, muut_ala :: int, teoll_lkm :: int, varast_lkm :: int FROM '|| quote_ident(ykr_rakennukset) ||' WHERE rakv::int != 0 AND xyind IN (SELECT ykr1.xyind FROM ykr1)';
+                EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS ykr2 AS SELECT xyind::varchar, rakv::int, energiam, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, varast_ala :: int, muut_ala :: int, teoll_lkm :: int, varast_lkm :: int FROM %s WHERE rakv::int != 0 AND xyind IN (SELECT ykr1.xyind FROM ykr1)', ykr_rakennukset);
             END IF;
             CREATE INDEX ON ykr2 (rakv, energiam);
         ELSE
-            EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr2 AS SELECT xyind, rakv::int, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, varast_ala :: int, muut_ala :: int, teoll_lkm :: int, varast_lkm :: int FROM '|| quote_ident(ykr_rakennukset) ||' WHERE rakv::int != 0 AND xyind IN (SELECT ykr1.xyind FROM ykr1)';
+            EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS ykr2 AS SELECT xyind::varchar, rakv::int, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, varast_ala :: int, muut_ala :: int, teoll_lkm :: int, varast_lkm :: int FROM %s WHERE rakv::int != 0 AND xyind IN (SELECT ykr1.xyind FROM ykr1)', ykr_rakennukset);
             CREATE INDEX ON ykr2 (rakv); -- update?
         END IF;
 
@@ -280,7 +277,8 @@ BEGIN
 
     /* Sähkön ominaispäästökertoimet */
     /* Electricity emission values */
-    SELECT sahko.gco2kwh INTO sahko_gco2kwh FROM energia.sahko AS sahko WHERE
+    SELECT sahko.gco2kwh INTO sahko_gco2kwh
+    FROM energia.sahko AS sahko WHERE
         sahko.vuosi = year AND
         sahko.skenaario = scenario AND
         sahko.metodi = method AND
@@ -288,7 +286,8 @@ BEGIN
 
     SELECT sahko_koti_as INTO sahko_as FROM energia.sahko_koti_as sas WHERE sas.vuosi = year AND sas.skenaario = scenario;
 
-    /* Lämmitystarve vuositasolla | Annual heating demand
+    /* 
+        Lämmitystarve vuositasolla | Annual heating demand
         lammitys_korjaus_vkunta [ei yksikköä] on paikkakuntakohtainen lämmitystarpeen korjauskerroin suhteessa lämmitystarvelaskennan vertailupaikkakuntaan. Lukuarvo riippuu laskentavuodesta. 
         lammitystarve_vuosi [ei yksikköä] on tarkastelupaikkakunnan lämmitystarvelaskennan vertailupaikkakunnan lämmitystarveluku tai sen ennuste. Lukuarvo riippuu laskentavuodesta.
         lammitystarve_vertailu [ei yksikköä] on tarkastelupaikkakunnan lämmitystarvelaskennan vertailupaikkakunnan lämmitystarveluvun vertailuarvo. Lukuarvo riippuu laskentavuodesta.
@@ -297,10 +296,11 @@ BEGIN
         käytetään vertailupaikkakunnan kertoimen sijaan paikkakuntakohtaista lämmitystarpeen korjauskerrointa Jyväskylän suhteen.
             lammitys_korjaus_jkl [ei yksikköä] on paikkakuntakohtainen lämmitystarpeen korjauskerroin Jyväskylään. Lukuarvo riippuu laskentavuodesta.
     */
+
     SELECT (lammitystarve_vuosi::real / lammitystarve_vertailu::real / lammitys_korjaus_vkunta::real)
         INTO lammitystarve FROM energia.lammitystarve as lt
         WHERE lt.vuosi = year;
-   
+
     /* Dummy-kertoimet lämmitysmuodoille | Dummy multipliers by method of heating */
     SELECT array[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, turve, hiili, maalampo, muu_lammitys] INTO lmuoto_apu1 FROM energia.lmuoto_apu WHERE type = 'lmuoto_apu1';
     SELECT array[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, turve, hiili, maalampo, muu_lammitys] INTO lmuoto_apu2 FROM energia.lmuoto_apu WHERE type = 'lmuoto_apu2';
@@ -311,11 +311,11 @@ BEGIN
     /* Dummy-kertoimet jäähdytysmuodoille | Dummy multipliers by method of cooling */
     SELECT array[kaukok, sahko, pumput, muu] INTO jmuoto_apu1 FROM energia.jmuoto_apu WHERE type = 'jmuoto_apu1';
     SELECT array[kaukok, sahko, pumput, muu] INTO jmuoto_apu2 FROM energia.jmuoto_apu WHERE type = 'jmuoto_apu2';
-    
+
     /* Jäähdytyksen ominaispäästökertoimet | Emission values for cooling */
     SELECT array[kaukok, sahko, pumput, muu] FROM energia.jaahdytys_gco2kwh ej WHERE ej.vuosi = year AND ej.skenaario = scenario INTO j_gco2kwh;
     SELECT array(SELECT unnest(jmuoto_apu1) * sahko_gco2kwh + unnest(j_gco2kwh) * unnest(jmuoto_apu2)) INTO jaahdytys_gco2kwh;
-   
+
     --------------------------------------------------------
     /* Liikenteen globaalimuuttujat - Ominaispäästötietojen esikäsittely, kulkumuodosta riippumattomia */ 
     /* Global parameters for traffic - emission values preprocessing, independent of traffic mode */
@@ -417,7 +417,7 @@ BEGIN
             GROUP BY ykr2.xyind) rakennukset
             WHERE rakennukset.xyind = results.xyind;
     END IF;
-    
+
     UPDATE results SET 
         tilat_jaahdytys_tco2 = rakennukset.tilat_jaahdytys_co2 * muunto_massa,
         sahko_kiinteistot_tco2 = rakennukset.sahko_kiinteistot_co2 * muunto_massa,
