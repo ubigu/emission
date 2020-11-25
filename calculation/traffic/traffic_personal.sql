@@ -96,7 +96,9 @@ BEGIN
                 raide + bussi * 0.20 + ((jalkapyora + bussi + raide + hlauto + muu) * ((raide +  bussi) / (jalkapyora + bussi + raide + hlauto + muu) + 0.00012 * (year - baseYear)) - raide - bussi)
             WHEN hlt.vyoh = 4 OR hlt.vyoh = 10 THEN
                 raide + bussi * 0.15 + ((jalkapyora + bussi + raide + hlauto + muu) * ((raide +  bussi) / (jalkapyora + bussi + raide + hlauto + muu) + 0.00012 * (year - baseYear)) - raide - bussi)
-            WHEN hlt.vyoh = 837101 OR hlt.vyoh = 9993 THEN 
+            WHEN hlt.vyoh = 837101 THEN 
+                raide + bussi * 0.5 + ((jalkapyora + bussi + raide + hlauto + muu) * ((raide +  bussi) / (jalkapyora + bussi + raide + hlauto + muu) + 0.00066 * (year - baseYear)) - raide - bussi)
+            WHEN hlt.vyoh = 9993 THEN 
                 raide + bussi * 0.5 + ((jalkapyora + bussi + raide + hlauto + muu) * ((raide +  bussi) / (jalkapyora + bussi + raide + hlauto + muu) + 0.00066 * (year - baseYear)) - raide - bussi)
             ELSE raide
         END),
@@ -109,7 +111,9 @@ BEGIN
                 bussi * 0.80
             WHEN hlt.vyoh = 4 OR hlt.vyoh = 10 THEN
                 bussi * 0.95
-            WHEN hlt.vyoh = 837101 OR hlt.vyoh = 9993 THEN 
+            WHEN hlt.vyoh = 837101 THEN 
+                bussi * 0.5
+            WHEN hlt.vyoh = 9993 THEN 
                 bussi * 0.5
             ELSE bussi
         END),
@@ -122,7 +126,9 @@ BEGIN
                 hlauto - ((jalkapyora + bussi + raide + hlauto + muu) * ((raide +  bussi) / (jalkapyora + bussi + raide + hlauto + muu) + 0.00012 * (year - baseYear)) - raide - bussi)
             WHEN hlt.vyoh = 4 OR hlt.vyoh = 10 THEN
                 hlauto - ((jalkapyora + bussi + raide + hlauto + muu) * ((raide +  bussi) / (jalkapyora + bussi + raide + hlauto + muu) + 0.00012 * (year - baseYear)) - raide - bussi)
-            WHEN hlt.vyoh = 837101 OR hlt.vyoh = 9993 THEN 
+            WHEN hlt.vyoh = 837101 THEN 
+                hlauto - ((jalkapyora + bussi + raide + hlauto + muu) * ((raide +  bussi) / (jalkapyora + bussi + raide + hlauto + muu) + 0.00066 * (year - baseYear)) - raide - bussi)
+            WHEN hlt.vyoh = 9993 THEN 
                 hlauto - ((jalkapyora + bussi + raide + hlauto + muu) * ((raide +  bussi) / (jalkapyora + bussi + raide + hlauto + muu) + 0.00066 * (year - baseYear)) - raide - bussi)
             ELSE hlauto
         END);
