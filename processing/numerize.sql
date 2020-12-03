@@ -1,6 +1,6 @@
-DROP FUNCTION IF EXISTS public.il_numerize;
+DROP FUNCTION IF EXISTS public.il_numerize_new;
 CREATE OR REPLACE FUNCTION
-public.il_numerize(
+public.il_numerize_new(
     ykr_taulu regclass,
     baseYear integer,
     targetYear integer,
@@ -268,8 +268,8 @@ SELECT * FROM
     (SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind, 10 AS vyoh
     FROM ykr, uz, keskusverkko /* keskus */
     /* Search for grid cells within current UZ central areas delineation */
-    WHERE ykr.maa_ha != 0 AND (st_within(st_centroid(ykr.geom), uz.geom) AND uz.vyoh IN (10,11,12,837101))
-        OR (st_dwithin(YKR.geom, uz.geom, 25) AND uz.vyoh IN (10,11,12,837101))
+    WHERE ykr.maa_ha != 0 AND (st_within(st_centroid(ykr.geom), uz.geom) AND uz.vyoh IN (10,11,12,6))
+        OR (st_dwithin(YKR.geom, uz.geom, 25) AND uz.vyoh IN (10,11,12,6))
         AND (ykr.alueteho > 0.05 AND ykr.tp_yht > 0)
         AND (ykr.alueteho > 0.2 AND ykr.v_yht >= 100 AND YKR.tp_yht > 0)
         /* Select only edge neighbours, no corner touchers */
@@ -292,7 +292,7 @@ SELECT * FROM
     CREATE INDEX ON uz_new USING GIST (geom);
 
     /* Erityistapaukset */
-    UPDATE uz_new SET vyoh = 837101 WHERE uz_new.vyoh = 10 AND st_dwithin(uz_new.geom,
+    UPDATE uz_new SET vyoh = 6 WHERE uz_new.vyoh = 10 AND st_dwithin(uz_new.geom,
             (SELECT keskusverkko.geom FROM keskusverkko WHERE keskusverkko.keskusnimi = 'Hervanta'), 2000);
 
     /* Keskustan reunavyöhykkeet */
@@ -321,6 +321,56 @@ UPDATE ykr AS targetykr
     ) AS n
 WHERE targetykr.xyind = n.xyind;
 
+/* Intensiiviset joukkoliikennevyöhykkeet - uudet raideliikenteen pysäkin/asemanseudut */
+IF jl_taulu IS NOT NULL	THEN
+    INSERT INTO uz_new
+        SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind,
+        CASE
+            WHEN ykr.vyoh = 1 AND jl.k_jltyyp = 'juna' THEN CONCAT(99911,jl.k_liikv)::int
+            WHEN ykr.vyoh = 2 AND jl.k_jltyyp = 'juna' THEN CONCAT(99921,jl.k_liikv)::int
+            WHEN ykr.vyoh IN (3,12,41) AND jl.k_jltyyp = 'juna' THEN CONCAT(99931,jl.k_liikv)::int
+            WHEN ykr.vyoh IN (4,11,40) AND jl.k_jltyyp = 'juna' THEN CONCAT(99941,jl.k_liikv)::int
+            WHEN (ykr.vyoh = 5 OR ykr.vyoh IS NULL) AND jl.k_jltyyp = 'juna' THEN CONCAT(99951,jl.k_liikv)::int
+            WHEN ykr.vyoh IN (10,11,12) AND jl.k_jltyyp = 'juna' THEN CONCAT(99901,jl.k_liikv)::int
+            WHEN ykr.vyoh = 6 AND jl.k_jltyyp = 'juna' THEN CONCAT(99961,jl.k_liikv)::int
+            WHEN ykr.vyoh = 1 AND jl.k_jltyyp = 'raitiotie' THEN CONCAT(99912,jl.k_liikv)::int
+            WHEN ykr.vyoh = 2 AND jl.k_jltyyp = 'raitiotie' THEN CONCAT(99922,jl.k_liikv)::int
+            WHEN ykr.vyoh IN (3,12,41) AND jl.k_jltyyp = 'raitiotie' THEN CONCAT(99932,jl.k_liikv)::int
+            WHEN ykr.vyoh IN (4,11,40) AND jl.k_jltyyp = 'raitiotie' THEN CONCAT(99942,jl.k_liikv)::int
+            WHEN (ykr.vyoh = 5 OR ykr.vyoh IS NULL) AND jl.k_jltyyp = 'raitiotie' THEN CONCAT(99952,jl.k_liikv)::int
+            WHEN ykr.vyoh IN (10,11,12,6) AND jl.k_jltyyp = 'raitiotie' THEN CONCAT(99902,jl.k_liikv)::int
+            WHEN ykr.vyoh = 6 AND jl.k_jltyyp = 'raitiotie' THEN CONCAT(99962,jl.k_liikv)::int
+            ELSE ykr.vyoh END
+        AS vyoh
+        FROM ykr, uz, jl
+        /* Only those that are not already something else */
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM uz_new
+            WHERE st_intersects(st_centroid(ykr.geom),uz_new.geom)
+        ) AND st_dwithin(ykr.geom, jl.geom, CASE WHEN jl.k_jltyyp = 'raitiotie' THEN 800 WHEN jl.k_jltyyp = 'juna' THEN 1000 ELSE 400 END) AND jl.k_liikv <= calculationYear;
+END IF;
+
+IF jl_taulu IS NOT NULL	THEN
+    UPDATE uz_new
+        SET vyoh =
+        CASE
+            WHEN uz_new.vyoh = 1 AND jl.k_jltyyp = 'juna' THEN CONCAT(99911,jl.k_liikv)::int
+            WHEN uz_new.vyoh = 2 AND jl.k_jltyyp = 'juna' THEN CONCAT(99921,jl.k_liikv)::int
+            WHEN uz_new.vyoh IN (10,11,12) AND jl.k_jltyyp = 'juna' THEN CONCAT(99901,jl.k_liikv)::int
+            WHEN uz_new.vyoh = 6 AND jl.k_jltyyp = 'juna' THEN CONCAT(99961,jl.k_liikv)::int
+            WHEN uz_new.vyoh = 1 AND jl.k_jltyyp = 'raitiotie' THEN CONCAT(99912,jl.k_liikv)::int
+            WHEN uz_new.vyoh = 2 AND jl.k_jltyyp = 'raitiotie' THEN CONCAT(99922,jl.k_liikv)::int
+            WHEN uz_new.vyoh IN (10,11,12,6) AND jl.k_jltyyp = 'raitiotie' THEN CONCAT(99902,jl.k_liikv)::int
+            WHEN uz_new.vyoh = 6 AND jl.k_jltyyp = 'raitiotie' THEN CONCAT(99962,jl.k_liikv)::int
+            ELSE uz_new.vyoh END
+        FROM jl
+        /* Only those that are not already something else */
+        WHERE uz_new.vyoh IN (1,2,10,11,12,6)
+        AND st_dwithin(uz_new.geom, jl.geom, CASE WHEN jl.k_jltyyp = 'raitiotie' THEN 800 WHEN jl.k_jltyyp = 'juna' THEN 1000 ELSE 400 END) AND jl.k_liikv <= calculationYear;
+END IF;
+
+
 /* Intensiiviset joukkoliikennevyöhykkeet - nykyisten kasvatus */
 INSERT INTO uz_new
     SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind, 3 AS vyoh
@@ -330,22 +380,10 @@ INSERT INTO uz_new
             SELECT 1
             FROM uz_new
             WHERE st_intersects(st_centroid(ykr.geom),uz_new.geom) /* select those that are currently intensiivinen joukkoliikennevyöhyke */
-        ) AND (st_intersects(st_centroid(ykr.geom), uz.geom) AND uz.vyoh IN (3,12,41)
-        OR (st_intersects(ykr.geom, uz.geom) AND uz.vyoh IN (3,12,41)
-        AND (st_dwithin(ykr.geom, uz.geom,125) AND uz.vyoh IN (3,12,41) AND (ykr.v_yht_nn > 797 AND ykr.tp_yht_nn > 280))));
-
-/* Intensiiviset joukkoliikennevyöhykkeet - uudet raideliikenteen pysäkin/asemanseudut */
-IF jl_taulu IS NOT NULL	THEN
-    INSERT INTO uz_new
-        SELECT DISTINCT ON (ykr.geom) ykr.geom, ykr.xyind, 9993 AS vyoh
-        FROM ykr, uz, jl
-            /* Only those that are not already something else */
-            WHERE NOT EXISTS (
-                SELECT 1
-                FROM uz_new
-                WHERE st_intersects(st_centroid(ykr.geom),uz_new.geom)
-            ) AND st_dwithin(ykr.geom, jl.geom,400) AND jl.k_liikv <= calculationYear;
-END IF;
+        ) AND (st_intersects(st_centroid(ykr.geom), uz.geom) AND uz.vyoh IN (3,12,41, 99911, 99921, 99931, 99941, 99951, 99961, 99901, 99912, 99922, 99932, 99942, 99952, 99962, 99902)
+        OR (st_intersects(ykr.geom, uz.geom) AND uz.vyoh IN (3,12,41, 99911, 99921, 99931, 99941, 99951, 99961, 99901, 99912, 99922, 99932, 99942, 99952, 99962, 99902)
+        AND (st_dwithin(ykr.geom, uz.geom,125) AND uz.vyoh IN (3,12,41, 99911, 99921, 99931, 99941, 99951, 99961, 99901, 99912, 99922, 99932, 99942, 99952, 99962, 99902)
+        AND (ykr.v_yht_nn > 797 AND ykr.tp_yht_nn > 280))));
 
 /* Intensiiviset joukkoliikennevyöhykkeet - uudet muualle syntyvät vyöhykkeet */
 INSERT INTO uz_new
@@ -381,6 +419,7 @@ INSERT INTO uz_new
             FROM uz_new
             WHERE st_intersects(st_centroid(ykr.geom),uz_new.geom)
         ) AND (st_intersects(st_centroid(ykr.geom), uz.geom) AND uz.vyoh IN (4,11,40)
+        AND ykr.vyoh NOT IN (99911, 99921, 99931, 99941, 99951, 99961, 99901, 99912, 99922, 99932, 99942, 99952, 99962, 99902)
         OR (st_intersects(ykr.geom, uz.geom) AND uz.vyoh IN (4,11,40)
         AND
      	(st_dwithin(ykr.geom, uz.geom,125) AND uz.vyoh IN (4,11,40)) AND
@@ -396,7 +435,8 @@ INSERT INTO uz_new
             SELECT 1
             FROM uz_new
             WHERE st_intersects(st_centroid(ykr.geom),uz_new.geom)
-        ) AND ykr.v_yht_nn > 404 AND ykr.tp_yht_nn > 63;
+        ) AND ykr.vyoh NOT IN (99911, 99921, 99931, 99941, 99951, 99961, 99901, 99912, 99922, 99932, 99942, 99952, 99962, 99902)
+        AND ykr.v_yht_nn > 404 AND ykr.tp_yht_nn > 63;
 
 
 /* AUTOVYÖHYKKEET */

@@ -1,6 +1,6 @@
-DROP FUNCTION IF EXISTS il_calculate_emissions;
+DROP FUNCTION IF EXISTS il_calculate_emissions_new;
 CREATE OR REPLACE FUNCTION
-public.il_calculate_emissions(
+public.il_calculate_emissions_new(
     ykr_v regclass, -- YKR-väestödata | YKR population data
     ykr_tp regclass, -- YKR-työpaikkadata | YKR workplace data
     ykr_rakennukset regclass, -- ykr rakennusdatan taulunimi
@@ -39,7 +39,7 @@ RETURNS TABLE(
     kerrosala int,
     uz int,
     vuosi date,
-    geom geometry)
+    geom geometry(MultiPolygon, 3067))
 AS $$
 DECLARE
     kaukolampotaulu text;
@@ -102,14 +102,14 @@ BEGIN
         RAISE NOTICE 'Preprocessing raw data';
         /* Luodaan väliaikainen taulu, joka sisältää mm. YKR väestö- ja työpaikkatiedot */
         /* Creating a temporary table with e.g. YKR population and workplace data */
-        EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS ykr1 AS SELECT * FROM (SELECT * FROM il_preprocess(%L::regclass, %L::regclass, %L::regclass)) ykvtp', aoi, ykr_v, ykr_tp);
+        EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS ykr1 AS SELECT * FROM (SELECT * FROM il_preprocess_new(%L::regclass, %L::regclass, %L::regclass)) ykvtp', aoi, ykr_v, ykr_tp);
         CREATE INDEX ON ykr1 (vyoh);
     END IF;
 
     IF targetYear IS NOT NULL THEN
 
         /* Numeeristetaan suunnitelma-aineistoa | 'Numerizing' the given plan data */
-        CREATE TEMP TABLE IF NOT EXISTS ykr1_temp AS SELECT * FROM il_numerize('ykr1', baseYear, targetYear, year, area, kt_taulu, kv_taulu, jl_taulu);
+        CREATE TEMP TABLE IF NOT EXISTS ykr1_temp AS SELECT * FROM il_numerize_new('ykr1', baseYear, targetYear, year, area, kt_taulu, kv_taulu, jl_taulu);
         DROP TABLE IF EXISTS ykr1;
         ALTER TABLE ykr1_temp RENAME TO ykr1;
 
@@ -204,7 +204,7 @@ BEGIN
         RAISE NOTICE 'Updating building data';
         IF localbuildings = true THEN
             IF refined = true THEN 
-                EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS ykr2 AS SELECT xyind::varchar, rakv::int, energiam, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, myymal_pien_ala :: int, myymal_super_ala :: int, myymal_hyper_ala :: int, myymal_muu_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, teoll_elint_ala :: int, teoll_tekst_ala :: int, teoll_puu_ala :: int, teoll_paper_ala :: int, teoll_miner_ala :: int, teoll_kemia_ala :: int, teoll_kone_ala :: int, teoll_mjalos_ala :: int, teoll_metal_ala :: int, teoll_vesi_ala :: int, teoll_energ_ala :: int, teoll_yhdysk_ala :: int, teoll_kaivos_ala :: int, teoll_muu_ala :: int, varast_ala :: int, muut_ala :: int, teoll_lkm :: int, varast_lkm :: int FROM (SELECT * FROM il_update_buildings_refined(''rak_initial'', ''ykr1'', %L, %L, %L, %L)) updatedbuildings', year, baseYear, targetYear, scenario);
+                EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS ykr2 AS SELECT xyind::varchar, rakv::int, energiam, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, myymal_pien_ala :: int, myymal_super_ala :: int, myymal_hyper_ala :: int, myymal_muu_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, teoll_elint_ala :: int, teoll_tekst_ala :: int, teoll_puu_ala :: int, teoll_paper_ala :: int, teoll_miner_ala :: int, teoll_kemia_ala :: int, teoll_kone_ala :: int, teoll_mjalos_ala :: int, teoll_metal_ala :: int, teoll_vesi_ala :: int, teoll_energ_ala :: int, teoll_yhdysk_ala :: int, teoll_kaivos_ala :: int, teoll_muu_ala :: int, varast_ala :: int, muut_ala :: int, teoll_lkm :: int, varast_lkm :: int FROM (SELECT * FROM il_update_buildings_refined_new(''rak_initial'', ''ykr1'', %L, %L, %L, %L)) updatedbuildings', year, baseYear, targetYear, scenario);
             ELSE 
                 EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS ykr2 AS SELECT xyind::varchar, rakv::int, energiam, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, varast_ala :: int, muut_ala :: int, teoll_lkm :: int, varast_lkm :: int FROM (SELECT * FROM il_update_buildings_local(''rak_initial'', ''ykr1'', %L, %L, %L, %L)) updatedbuildings', year, baseYear, targetYear, scenario);
             END IF;
@@ -664,10 +664,10 @@ BEGIN
         sahko_kotitaloudet_tco2 = COALESCE(results.sahko_kotitaloudet_tco2 + NULLIF(pop.sahko_kotitaloudet_co2_as * muunto_massa, 0), 0)
     FROM
         (SELECT ykr1.xyind,
-            SUM((SELECT il_traffic_personal_co2(v_yht, tp_yht, year, 'bussi', centdist, vyoh, area, scenario, gco2kwh_matrix)) +
-                (SELECT il_traffic_personal_co2(v_yht, tp_yht, year, 'raide', centdist, vyoh, area, scenario, gco2kwh_matrix)) +
-                (SELECT il_traffic_personal_co2(v_yht, tp_yht, year, 'hlauto', centdist, vyoh, area, scenario, gco2kwh_matrix)) +
-                (SELECT il_traffic_personal_co2(v_yht, tp_yht, year, 'muu', centdist, vyoh, area, scenario, gco2kwh_matrix)))
+            SUM((SELECT il_traffic_personal_co2_new(v_yht, tp_yht, year, 'bussi', centdist, vyoh, area, scenario, gco2kwh_matrix)) +
+                (SELECT il_traffic_personal_co2_new(v_yht, tp_yht, year, 'raide', centdist, vyoh, area, scenario, gco2kwh_matrix)) +
+                (SELECT il_traffic_personal_co2_new(v_yht, tp_yht, year, 'hlauto', centdist, vyoh, area, scenario, gco2kwh_matrix)) +
+                (SELECT il_traffic_personal_co2_new(v_yht, tp_yht, year, 'muu', centdist, vyoh, area, scenario, gco2kwh_matrix)))
             AS liikenne_hlo_co2,
             SUM((SELECT il_el_household_co2(v_yht, year, NULL, scenario, sahko_gco2kwh, sahko_as)))
             AS sahko_kotitaloudet_co2_as
@@ -689,20 +689,21 @@ BEGIN
         sum_rakentaminen_tco2 = r.rak_korjaussaneeraus_tco2 + r.rak_purku_tco2 + r.rak_uudis_tco2;
     
     UPDATE results res SET kerrosala = r.rakyht_ala FROM (SELECT distinct on (ykr2.xyind) ykr2.xyind, SUM(ykr2.rakyht_ala) rakyht_ala from ykr2 WHERE ykr2.rakv::int != 0 group by ykr2.xyind) r WHERE res.xyind = r.xyind;
-    UPDATE results res SET uz = (CASE WHEN res.uz = 9993 THEN 3 WHEN res.uz = 837101 THEN 10 ELSE res.uz END);
-    RETURN QUERY SELECT * from results WHERE results.sum_yhteensa_tco2 > 0;
-    DROP TABLE results;
 
     IF targetYear IS NULL THEN
         DROP TABLE ykr1, ykr2;
     ELSE 
         IF year = targetYear THEN
             DROP TABLE ykr1, ykr2;
+            UPDATE results res SET uz =
+            (CASE WHEN LEFT(res.uz::varchar,5)::int IN (99911, 99921, 99931, 99941, 99951, 99961, 99901) THEN 9991
+            WHEN LEFT(res.uz::varchar,5)::int IN (99912, 99922, 99932, 99942, 99952, 99962, 99902) THEN 9992
+            ELSE res.uz END);
         END IF;
     END IF;
 
-    --EXCEPTION WHEN others THEN
-     --   DROP TABLE IF EXISTS results, ykr1, ykr2;
+    RETURN QUERY SELECT * from results WHERE results.sum_yhteensa_tco2 > 0;
+    DROP TABLE results;
 
 END;
 $$ LANGUAGE plpgsql;

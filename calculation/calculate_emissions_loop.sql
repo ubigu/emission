@@ -1,6 +1,6 @@
-DROP FUNCTION IF EXISTS il_calculate_emissions_loop;
+DROP FUNCTION IF EXISTS il_calculate_emissions_loop_new;
 CREATE OR REPLACE FUNCTION
-public.il_calculate_emissions_loop(
+public.il_calculate_emissions_loop_new(
     ykr_v regclass, -- YKR-väestödata | YKR population data
     ykr_tp regclass, -- YKR-työpaikkadata | YKR workplace data
     ykr_rakennukset regclass, -- ykr rakennusdatan taulunimi
@@ -52,9 +52,9 @@ BEGIN
     LOOP
 
         IF calculationYear = baseYear THEN
-            CREATE TEMP TABLE res AS SELECT * FROM il_calculate_emissions(ykr_v, ykr_tp, ykr_rakennukset, aoi, calculationYear, skenaario, metodi, sahkolaji, alue, baseYear, targetYear, kt_taulu, kv_taulu, jl_taulu);
+            CREATE TEMP TABLE res AS SELECT * FROM il_calculate_emissions_new(ykr_v, ykr_tp, ykr_rakennukset, aoi, calculationYear, skenaario, metodi, sahkolaji, alue, baseYear, targetYear, kt_taulu, kv_taulu, jl_taulu);
         ELSE 
-            INSERT INTO res SELECT * FROM il_calculate_emissions(ykr_v, ykr_tp, ykr_rakennukset, aoi, calculationYear, skenaario, metodi, sahkolaji, alue, baseYear, targetYear, kt_taulu, kv_taulu, jl_taulu);
+            INSERT INTO res SELECT * FROM il_calculate_emissions_new(ykr_v, ykr_tp, ykr_rakennukset, aoi, calculationYear, skenaario, metodi, sahkolaji, alue, baseYear, targetYear, kt_taulu, kv_taulu, jl_taulu);
         END IF;
         
     END LOOP;

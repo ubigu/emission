@@ -1,5 +1,6 @@
+DROP FUNCTION IF EXISTS public.il_preprocess_new;
 CREATE OR REPLACE FUNCTION
-public.il_preprocess(
+public.il_preprocess_new(
     aoi regclass, -- Tutkimusalue | area of interest
     ykr_v regclass, -- YKR-väestödata | YKR population data
     ykr_tp regclass -- YKR-työpaikkadata | YKR workplace data

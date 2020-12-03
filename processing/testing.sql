@@ -2,6 +2,21 @@
  alter table output_uuid3 add column geom geometry('MultiPolygon', 3067);
  UPDATE output_uuid3 results set geom = ykr.geom from user_input."ykr_uuid" ykr WHERE ykr.xyind = results.xyind;
 
+SELECT * FROM il_calculate_emissions_new(
+    'YKR_vaesto_2019_Pirkanmaa', -- YKR-väestödata | YKR population data
+    'ykr_tyopaikat_2017_tampere', -- YKR-työpaikkadata | YKR workplace data
+    'ykr_rak_tampere_rahu_uusi_toimipaikat_25092020', -- ykr rakennusdatan taulunimi
+    'tampere_kantakaupunki', -- Tutkimusalue | area of interest
+    2019, -- Vuosi, jonka perusteella päästöt lasketaan / viitearvot haetaan
+    'kasvu', -- PITKO:n mukainen kehitysskenaario
+    'em', -- Päästöallokointimenetelmä, 'em' tai 'hjm'
+    'hankinta' , -- Sähkön päästölaji, 'hankinta' tai 'tuotanto'
+    'Tampere',  -- Alue, jolle päästöjä ollaan laskemassa
+    2019  -- Laskennan lähtövuosi
+)
+
+
+
 CREATE TABLE tests.rak_vesi_rahu_energiam AS
 SELECT ykr2.xyind, SUM((SELECT il_lamminkayttovesi_co2(erpien_ala, 2019, 'erpien', ykr2.rakv, 'kaukolampo_tre', 'wem', 'em', 'hankinta', ykr2.energiam)) +
             (SELECT il_lamminkayttovesi_co2(rivita_ala, 2019, 'rivita', ykr2.rakv, 'kaukolampo_tre', 'wem', 'em', 'hankinta', ykr2.energiam)) +
