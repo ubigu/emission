@@ -59,6 +59,23 @@ BEGIN
         
     END LOOP;
 
+/* Update to different jolis
+    UPDATE res SET uz = CASE
+        WHEN LEFT(res.uz::varchar,5)::int IN (99911, 99921, 99931, 99941, 99951, 99961, 99901) THEN 9991
+        WHEN LEFT(res.uz::varchar,5)::int IN (99912, 99922, 99932, 99942, 99952, 99962, 99902) THEN 9992
+    ELSE res.uz END);
+*/
+
+    UPDATE res SET uz = CASE
+        WHEN LEFT(res.uz::varchar,5)::int IN (99911, 99912) THEN 1
+        WHEN LEFT(res.uz::varchar,5)::int IN (99921, 99922) THEN 2
+        WHEN LEFT(res.uz::varchar,5)::int IN (99931, 99932) THEN 3
+        WHEN LEFT(res.uz::varchar,5)::int IN (99941, 99942) THEN 3
+        WHEN LEFT(res.uz::varchar,5)::int IN (99951, 99952) THEN 3
+        WHEN LEFT(res.uz::varchar,5)::int IN (6, 99961, 99962) THEN 10
+        WHEN LEFT(res.uz::varchar,5)::int IN (6, 99901, 99902) THEN 10
+    ELSE res.uz END;
+
     RETURN QUERY SELECT * FROM res;
     DROP TABLE IF EXISTS res;
 /*
