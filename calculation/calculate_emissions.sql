@@ -695,10 +695,6 @@ BEGIN
     ELSE 
         IF year = targetYear THEN
             DROP TABLE ykr1, ykr2;
-            UPDATE results res SET uz =
-            (CASE WHEN LEFT(res.uz::varchar,5)::int IN (99911, 99921, 99931, 99941, 99951, 99961, 99901) THEN 9991
-            WHEN LEFT(res.uz::varchar,5)::int IN (99912, 99922, 99932, 99942, 99952, 99962, 99902) THEN 9992
-            ELSE res.uz END);
         END IF;
     END IF;
 
