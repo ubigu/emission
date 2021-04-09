@@ -12,10 +12,10 @@ DROP FUNCTION IF EXISTS il_prop_cool_co2;
 CREATE OR REPLACE FUNCTION
 public.il_prop_cool_co2(
     rakennus_ala integer, -- Rakennustyypin tietyn ikäluokan kerrosala YKR-ruudussa laskentavuonna. Lukuarvo riippuu laskentavuodesta, rakennuksen tyypistä ja ikäluokasta [m2]
-    year integer, -- Laskentavuosi | Calculation / reference year
+    calculationYear integer, -- Laskentavuosi | Calculation / reference year
     rakennustyyppi varchar, -- Rakennustyyppi | Building type. esim. | e.g. 'erpien', 'rivita'
     rakennusvuosi integer, -- Rakennusvuosikymmen tai -vuosi (2017 alkaen) | Building decade or year (2017 onwards)
-    scenario varchar, -- PITKO-kehitysskenaario | PITKO development scenario
+    calculationScenario varchar, -- PITKO-kehitysskenaario | PITKO development scenario
     jaahdytys_gco2kwh real[] /* Jäähdytyksen aggregoidut ominaispäästökertoimet */ /* Aggegated cooling emission values */
 )
 RETURNS real AS
@@ -37,13 +37,13 @@ BEGIN
         
         /* Jäähdytystarpeet muutos */
         /* Cooling demand change */
-        EXECUTE 'SELECT ' || rakennustyyppi || ' FROM rakymp.jaahdytys_muutos WHERE skenaario = $1 AND vuosi = $2' 
-            INTO jaahdytys_muutos USING scenario, year;
+        EXECUTE 'SELECT ' || rakennustyyppi || ' FROM built.cooling_change WHERE scenario = $1 AND year = $2' 
+            INTO jaahdytys_muutos USING calculationScenario, calculationYear;
         
         /* Rakennusten jäähdytettävät osuudet & jäähdytyksen energiankulutus jäähdytysmuodoittain kerrosalaa kohden, rakennustyypeittäin ja -vuosittain */
         /* Proportion of different types of building cooled & energy consumption of cooling buildings per floor area, by building type and year and cooling method */
-        EXECUTE 'SELECT array(SELECT unnest(array[kaukok,sahko,pumput,muu]) * (jaahdytys_osuus * jaahdytys_kwhm2) FROM rakymp.jaahdytys_osuus_kwhm2 WHERE skenaario = $1 AND rakennus_tyyppi = $2 AND rakv = $3)' 
-            INTO jaahdytys_kwhm2 USING scenario, rakennustyyppi, rakennusvuosi;
+        EXECUTE 'SELECT array(SELECT unnest(array[kaukok,sahko,pumput,muu]) * (jaahdytys_osuus * jaahdytys_kwhm2) FROM built.cooling_proportions_kwhm2 WHERE scenario = $1 AND rakennus_tyyppi = $2 AND rakv = $3)' 
+            INTO jaahdytys_kwhm2 USING calculationScenario, rakennustyyppi, rakennusvuosi;
         
         /* Laskenta */
         /* Calculation */
