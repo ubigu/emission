@@ -16,9 +16,9 @@ DROP FUNCTION IF EXISTS il_el_iwhs_co2;
 CREATE OR REPLACE FUNCTION
 public.il_el_iwhs_co2(
     rakennus_ala real, -- rakennustyypin kerrosala YKR-ruudussa laskentavuonna [m2]. Riippuu laskentavuodesta, rakennuksen tyypistä ja ikäluokasta.
-    year integer, -- Laskentavuosi | Calculation / reference year
+    calculationYear integer, -- Laskentavuosi | Calculation / reference year
     rakennustyyppi varchar, -- Rakennustyyppi | Building type. esim. | e.g. 'erpien', 'rivita'
-    scenario varchar, -- PITKO-kehitysskenaario | PITKO development scenario
+    calculationScenario varchar, -- PITKO-kehitysskenaario | PITKO development scenario
     sahko_gco2kwh real -- kulutetun sähkön ominaispäästökerroin [gCO2-ekv/kWh]. Riippuu laskentavuodesta, taustaskenaariosta, päästölajista ‘tuotanto’/’hankinta’ sekä laskentatavasta ‘em’/’hjm’.
 )
 RETURNS real AS
@@ -30,8 +30,8 @@ BEGIN
     IF rakennus_ala <= 0 OR rakennus_ala IS NULL THEN
         RETURN 0;
     ELSE
-        EXECUTE 'SELECT ' || rakennustyyppi || ' FROM rakymp.sahko_ptv_kwhm2 WHERE skenaario = $1 AND vuosi = $2'
-            INTO sahko_ptv_kwhm2 USING scenario, year;
+        EXECUTE 'SELECT ' || rakennustyyppi || ' FROM built.electricity_iwhs_kwhm2 WHERE scenario = $1 AND year = $2'
+            INTO sahko_ptv_kwhm2 USING calculationScenario, calculationYear;
 
         SELECT rakennus_ala * sahko_ptv_kwhm2 INTO sahko_ptv_kwh;
         RETURN sahko_ptv_kwh * sahko_gco2kwh;
