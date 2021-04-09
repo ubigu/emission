@@ -13,9 +13,9 @@ DROP FUNCTION IF EXISTS il_el_household_co2;
 CREATE OR REPLACE FUNCTION
 public.il_el_household_co2(
     ala_or_vaesto real, -- Rakennustyypin ikäluokkakohtainen kerrosala YKR-ruudussa laskentavuonna [m2] tai väestö laskentavuonna.
-    year integer, -- Laskentavuosi | Calculation / reference year
+    calculationYear integer, -- Laskentavuosi | Calculation / reference year
     rakennustyyppi varchar, -- Rakennustyyppi | Building type. esim. | e.g. 'erpien', 'rivita'
-    scenario varchar, -- PITKO-kehitysskenaario | PITKO development scenario
+    calculationScenario varchar, -- PITKO-kehitysskenaario | PITKO development scenario
     sahko_gco2kwh real, -- Kulutetun sähkön ominaispäästökerroin [gCO2-ekv/kWh]. Riippuu laskentavuodesta, taustaskenaariosta, päästölajista ‘tuotanto’/’hankinta’ sekä laskentatavasta ‘em’/’hjm’.
     sahko_as real default null
 )
@@ -31,10 +31,10 @@ BEGIN
         RETURN 0;
     ELSE
         IF rakennustyyppi IS NOT NULL THEN 
-            EXECUTE 'SELECT ' || rakennustyyppi || ' FROM rakymp.sahko_koti_laite WHERE skenaario = $1 AND vuosi = $2'
-                INTO sahko_koti_laite USING scenario, year;
-            EXECUTE 'SELECT ' || rakennustyyppi || ' FROM rakymp.sahko_koti_valo WHERE skenaario = $1 AND vuosi = $2'
-                INTO sahko_koti_valo USING scenario, year;
+            EXECUTE 'SELECT ' || rakennustyyppi || ' FROM built.electricity_home_device WHERE scenario = $1 AND year = $2'
+                INTO sahko_koti_laite USING calculationScenario, calculationYear;
+            EXECUTE 'SELECT ' || rakennustyyppi || ' FROM built.electricity_home_light WHERE scenario = $1 AND year = $2'
+                INTO sahko_koti_valo USING calculationScenario, calculationYear;
             SELECT ala_or_vaesto * (sahko_koti_laite + sahko_koti_valo) INTO sahko_koti_kwh;
             RETURN sahko_koti_kwh * sahko_gco2kwh;
         ELSE 
