@@ -32,7 +32,7 @@ ELSE
 
     /* Haetaan laskentavuoden ja kehitysskenaarion perusteella rakennustyyppikohtaiset uudisrakentamisen energiankulutuksen kasvihuonekaasupäästöt */
     /* Get the unit emissions for energy consumption of construction by year of building, scenario and building type */
-    EXECUTE 'SELECT ' || rakennustyyppi || ' FROM built.building_demolish_energy_gco2m2 WHERE scenario = $1 AND year = $2'
+    EXECUTE 'SELECT ' || rakennustyyppi || ' FROM built.build_demolish_energy_gco2m2 WHERE scenario = $1 AND year = $2'
         INTO building_demolish_energy_gco2m2  USING calculationScenario, calculationYear;
     
     /* Lasketaan ja palautetaan päästöt CO2-ekvivalentteina [gCO2-ekv/v] */

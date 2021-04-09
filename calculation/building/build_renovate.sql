@@ -16,10 +16,10 @@ DROP FUNCTION IF EXISTS il_build_renovate_co2;
 CREATE OR REPLACE FUNCTION
 public.il_build_renovate_co2(
     rakennus_ala real, -- Rakennustyypin (erpien, rivita, askert, liike, tsto, liiken, hoito, kokoon, opetus, teoll, varast, muut) ikäluokkakohtainen kerrosala YKR-ruudussa laskentavuonna [m2]. Lukuarvo riippuu laskentavuodesta sekä rakennuksen tyypistä ja ikäluokasta.
-    year integer, -- Laskentavuosi | Calculation / reference year
+    calculationYear integer, -- Laskentavuosi | Calculation / reference year
     rakennustyyppi varchar,  -- Rakennustyyppi | Building type. esim. | e.g. 'erpien', 'rivita'
     rakennusvuosi integer, -- Rakennusvuosikymmen tai -vuosi (2017 alkaen) | Building decade or year (2017 onwards)
-    scenario varchar) -- PITKO-kehitysskenaario | PITKO development scenario
+    calculationScenario varchar) -- PITKO-kehitysskenaario | PITKO development scenario
 RETURNS real AS
 $$
 DECLARE
@@ -31,13 +31,13 @@ BEGIN
         RETURN 0;
     ELSE
         /* Korjausrakentamisen ominaispäästöt */
-        EXECUTE 'SELECT ' || rakennustyyppi || ' FROM rakymp.rak_korj_energia_gco2m2 WHERE skenaario = $1 AND vuosi = $2'
-            INTO rak_korj_energia_gco2m2  USING scenario, year;
+        EXECUTE 'SELECT ' || rakennustyyppi || ' FROM built.build_renovation_energy_gco2m2 WHERE scenario = $1 AND year = $2'
+            INTO rak_korj_energia_gco2m2  USING calculationScenario, calculationYear;
         /* Saneerauksen ominaispäästöt ja vuosittainen kattavuus */
-        EXECUTE 'SELECT ' || rakennustyyppi || ' FROM rakymp.rak_saneer_energia_gco2m2 WHERE skenaario = $1 AND vuosi = $2'
-            INTO rak_saneer_energia_gco2m2  USING scenario, year;
-        EXECUTE 'SELECT ' || rakennustyyppi || ' FROM rakymp.rak_saneer_osuus WHERE skenaario = $1 AND rakv = $2 AND vuosi = $3'
-            INTO rak_saneer_osuus USING scenario, rakennusvuosi, year;
+        EXECUTE 'SELECT ' || rakennustyyppi || ' FROM built.build_rebuilding_energy_gco2m2 WHERE scenario = $1 AND year = $2'
+            INTO rak_saneer_energia_gco2m2  USING calculationScenario, calculationYear;
+        EXECUTE 'SELECT ' || rakennustyyppi || ' FROM built.build_rebuilding_proportions WHERE scenario = $1 AND rakv = $2 AND year = $3'
+            INTO rak_saneer_osuus USING calculationScenario, rakennusvuosi, calculationYear;
 
         RETURN rakennus_ala * (rak_korj_energia_gco2m2 + rak_saneer_energia_gco2m2 * rak_saneer_osuus); -- rak_korjaussaneeraus_energia_co2
         
