@@ -32,10 +32,10 @@ DROP FUNCTION IF EXISTS il_traffic_iwhs_co2;
 CREATE OR REPLACE FUNCTION
 public.il_traffic_iwhs_co2(
     rak_ala_lkm integer, -- Rakennusten kerrosala tai lukumäärä (vain teoll ja varast - tapauksissa)
-    year integer, -- Vuosi, jonka perusteella päästöt lasketaan / viitearvot haetaan
+    calculationYear integer, -- Vuosi, jonka perusteella päästöt lasketaan / viitearvot haetaan
     rakennustyyppi varchar, -- Rakennustyyppi | Building type. esim. | e.g. 'erpien', 'rivita'
     kulkumuoto varchar, -- Kulkumuoto
-    scenario varchar, -- PITKO:n mukainen kehitysskenaario
+    calculationScenario varchar, -- PITKO:n mukainen kehitysskenaario
     gco2kwh_matrix real[] /* Ominaispäästökertoimien pohja | Emission values template */
 )
 RETURNS real AS
@@ -57,23 +57,23 @@ BEGIN
         RETURN 0;
     ELSE
 
-        EXECUTE 'SELECT ' || rakennustyyppi || '::real FROM liikenne.t_suorite WHERE vuosi = $1 AND skenaario = $2 AND kmuoto = $3'
-            INTO ptv_suorite USING year, scenario, kulkumuoto;
-        EXECUTE 'SELECT ' || rakennustyyppi || ' FROM liikenne.t_kuljetus_km WHERE vuosi = $1 AND skenaario = $2 AND kmuoto = $3'
-            INTO ptv_kuljetus_km USING year, scenario, kulkumuoto;
-        EXECUTE 'SELECT ' || kulkumuoto || ' FROM liikenne.tliikenne_kuormitus WHERE skenaario = $1 AND vuosi = $2'
-            INTO ptv_kuormitus USING scenario, year;
+        EXECUTE 'SELECT ' || rakennustyyppi || '::real FROM liikenne.t_suorite WHERE year = $1 AND scenario = $2 AND kmuoto = $3'
+            INTO ptv_suorite USING calculationYear, calculationScenario, kulkumuoto;
+        EXECUTE 'SELECT ' || rakennustyyppi || ' FROM liikenne.t_kuljetus_km WHERE year = $1 AND scenario = $2 AND kmuoto = $3'
+            INTO ptv_kuljetus_km USING calculationYear, calculationScenario, kulkumuoto;
+        EXECUTE 'SELECT ' || kulkumuoto || ' FROM liikenne.tliikenne_kuormitus WHERE scenario = $1 AND year = $2'
+            INTO ptv_kuormitus USING calculationScenario, calculationYear;
 
         -------------------------------------------------------------------------------------------
         /* Kulkumuotojen käyttövoimien suoriteosuuksilla painotetut keskikulutukset */
 
         SELECT array[bensiini, etanoli, diesel, kaasu, phev_b, phev_d, ev, kv_muu]
             INTO kmuoto_kvoima_jakauma FROM liikenne.kvoima_kmuoto_jakauma
-            WHERE vuosi = year AND skenaario = scenario AND kmuoto = kulkumuoto;
+            WHERE year = calculationYear AND scenario = calculationScenario AND kmuoto = kulkumuoto;
         SELECT array[bensiini, etanoli, diesel, kaasu, phev_b, phev_d, ev, kv_muu]
             INTO kvoima_kwhkm
             FROM liikenne.kvoima_kwhkm
-            WHERE vuosi = year AND skenaario = scenario AND kmuoto = kulkumuoto;
+            WHERE year = calculationYear AND scenario = calculationScenario AND kmuoto = kulkumuoto;
 
         SELECT array(SELECT unnest(kmuoto_kvoima_jakauma) * unnest(kvoima_kwhkm)) INTO kmuoto_kvoima_mult_res;
         SELECT array(SELECT unnest(kmuoto_kvoima_jakauma) * unnest(gco2kwh_matrix)) INTO kmuoto_gco2kwh;
