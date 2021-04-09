@@ -1,4 +1,4 @@
-/* Kiinteistösähkön kulutus | Consupmtion of property tech electricity
+/* Kiinteistösähkön kulutus | Consumption of property tech electricity
 
 YKR-ruudun rakennusten liittyvä kiinteistösähkön käyttö sahko_kiinteisto_kwh [kWh/a] lasketaan kaavalla:
     sahko_kiinteisto_kwh = rakennus_ala * sahko_kiinteisto_kwhm2 * sahko_kiinteisto_muutos
@@ -12,10 +12,10 @@ DROP FUNCTION IF EXISTS il_el_property_co2;
 CREATE OR REPLACE FUNCTION
 public.il_el_property_co2(
     rakennus_ala real, -- Rakennustyypin ikäluokkakohtainen kerrosala YKR-ruudussa laskentavuonna. Lukuarvo riippuu laskentavuodesta sekä rakennuksen tyypistä ja ikäluokasta [m2]
-    year integer, -- Laskentavuosi | Calculation / reference year
+    calculationYear integer, -- Laskentavuosi | Calculation / reference year
     rakennustyyppi varchar, -- Rakennustyyppi | Building type. esim. | e.g. 'erpien', 'rivita'
     rakennusvuosi integer, -- Rakennusvuosikymmen tai -vuosi (2017 alkaen) | Building decade or year (2017 onwards)
-    scenario varchar, -- PITKO-kehitysskenaario | PITKO development scenario
+    calculationScenario varchar, -- PITKO-kehitysskenaario | PITKO development scenario
     sahko_gco2kwh real -- Kulutetun sähkön ominaispäästökerroin [gCO2-ekv/kWh]. Riippuu laskentavuodesta, taustaskenaariosta, päästölajista ‘tuotanto’/’hankinta’ sekä laskentatavasta ‘em’/’hjm’.
 )
 RETURNS real AS
@@ -35,14 +35,14 @@ BEGIN
 
         /* Kiinteistöjen sähkönkulutus kerrosalaa kohti */
         /* Electricity consumption of integrated property technology */
-        SELECT sahko_kiinteisto_kwhm2 INTO sahko_kwhm2 FROM rakymp.sahko_kiinteisto_kwhm2 AS kwhm2 WHERE
-            kwhm2.skenaario = scenario AND
+        SELECT sahko_kiinteisto_kwhm2 INTO sahko_kwhm2 FROM built.electricity_property_kwhm2 AS kwhm2 WHERE
+            kwhm2.scenario = calculationScenario AND
             kwhm2.rakennus_tyyppi = rakennustyyppi AND
             kwhm2.rakv = rakennusvuosi;
 
         /* Kiinteistöjen sähkönkulutuksen muutos rakennusten rakennusvuosikymmenittäin */
         /* Change of property electricity consupmtion according to year of building */
-        SELECT muutos FROM rakymp.sahko_kiinteisto_muutos WHERE skenaario = scenario AND rakv = rakennusvuosi AND vuosi = year INTO sahko_kiinteisto_muutos;
+        SELECT muutos FROM built.electricity_property_change WHERE scenario = calculationScenario AND rakv = rakennusvuosi AND year = calculationYear INTO sahko_kiinteisto_muutos;
         
         /* Lasketaan ja palautetaan päästöt CO2-ekvivalentteina */
         /* Calculate and return emissions as CO2-equivalents */
