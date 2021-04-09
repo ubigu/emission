@@ -15,11 +15,11 @@ DROP FUNCTION IF EXISTS il_prop_water_co2;
 CREATE OR REPLACE FUNCTION
 public.il_prop_water_co2(
 	rakennus_ala real, -- Rakennustyypin ikäluokkakohtainen kerrosala YKR-ruudussa laskentavuonna. Lukuarvo riippuu laskentavuodesta sekä rakennuksen tyypistä ja ikäluokasta [m2]
-    year integer, -- Vuosi, jonka perusteella päästöt lasketaan / viitearvot haetaan
+    calculationYear integer, -- Vuosi, jonka perusteella päästöt lasketaan / viitearvot haetaan
     rakennustyyppi varchar, -- Rakennustyyppi, esim. 'erpien', 'rivita'
     rakennusvuosi integer, -- Rakennusvuosikymmen tai -vuosi (2017 alkaen)
     gco2kwh_a real[], -- Lopulliset omainaispäästökertoimet
-    scenario varchar, -- PITKO:n mukainen kehitysskenaario
+    calculationScenario varchar, -- PITKO:n mukainen kehitysskenaario
     lammitysmuoto varchar default null -- Rakennuksen lämmityksessä käytettävä primäärinen energiamuoto 'energiam', mikäli tällainen on lisätty YKR/rakennusdataan
 )
 RETURNS real AS
@@ -45,20 +45,20 @@ BEGIN
         /* Käytetään kun on johdettu paikallisesta aineistosta lämmitys/energiamuototiedot ruututasolle */
         /* Used when local building register data has been used to derive grid level information incl. heating methods of building */
         IF lammitysmuoto IS NOT NULL THEN
-            EXECUTE 'SELECT ' || lammitysmuoto || ' FROM rakymp.tilat_hyotysuhde WHERE rakennus_tyyppi = $1 AND rakv = $2' INTO hyotysuhde USING rakennustyyppi, rakennusvuosi;
+            EXECUTE 'SELECT ' || lammitysmuoto || ' FROM built.spaces_efficiency WHERE rakennus_tyyppi = $1 AND rakv = $2' INTO hyotysuhde USING rakennustyyppi, rakennusvuosi;
         ELSE 
         /* Käytetään kun käytössä on pelkkää YKR-dataa */
         /* Used when basing the analysis on pure YKR data */
             SELECT array[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, turve, hiili, maalampo, muu_lammitys]
-                INTO lammitysosuus FROM rakymp.lammitysmuotojakauma WHERE skenaario = scenario AND rakennus_tyyppi = rakennustyyppi AND rakv = rakennusvuosi AND vuosi = year;
+                INTO lammitysosuus FROM built.distribution_heating_systems WHERE scenario = calculationScenario AND rakennus_tyyppi = rakennustyyppi AND rakv = rakennusvuosi AND year = calculationYear;
             SELECT array[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, turve, hiili, maalampo, muu_lammitys]
-                INTO hyotysuhde_a FROM rakymp.tilat_hyotysuhde WHERE rakennus_tyyppi = rakennustyyppi AND rakv = rakennusvuosi;
+                INTO hyotysuhde_a FROM built.spaces_efficiency WHERE rakennus_tyyppi = rakennustyyppi AND rakv = rakennusvuosi;
         END IF;
 
         /* Veden lämmityksen energiankulutus per kerrosneliö */
         /* Water heating power consumption per floor space, square meter */
-        SELECT vesi_kwh_m2 INTO vesi_kwhm2 FROM rakymp.vesi_kwhm2 vesi_kwhm2 WHERE
-            vesi_kwhm2.skenaario = scenario AND
+        SELECT vesi_kwh_m2 INTO vesi_kwhm2 FROM built.water_kwhm2 AS vesi_kwhm2 WHERE
+            vesi_kwhm2.scenario = calculationScenario AND
             vesi_kwhm2.rakennus_tyyppi = rakennustyyppi AND 
             vesi_kwhm2.rakv = rakennusvuosi;
     
