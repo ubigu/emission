@@ -12,9 +12,9 @@ DROP FUNCTION IF EXISTS il_build_demolish_co2;
 CREATE OR REPLACE FUNCTION
 public.il_build_demolish_co2(
 	rakennukset_poistuma real, -- rakennustyypin (erpien, rivita, askert, liike, tsto, liiken, hoito, kokoon, opetus, teoll, varast, muut) kerrosalan poistuma YKR-ruudussa laskentavuonna [m2].
-    year integer, -- Laskentavuosi | Calculation / reference year
+    calculationYear integer, -- Laskentavuosi | Calculation / reference year
     rakennustyyppi varchar, -- Rakennustyyppi | Building type. esim. | e.g. 'erpien', 'rivita'
-    scenario varchar -- PITKO-kehitysskenaario | PITKO development scenario
+    calculationScenario varchar -- PITKO-kehitysskenaario | PITKO development scenario
 )
 RETURNS real AS
 $$
@@ -32,8 +32,8 @@ ELSE
 
     /* Haetaan laskentavuoden ja kehitysskenaarion perusteella rakennustyyppikohtaiset uudisrakentamisen energiankulutuksen kasvihuonekaasupäästöt */
     /* Get the unit emissions for energy consumption of construction by year of building, scenario and building type */
-    EXECUTE 'SELECT ' || rakennustyyppi || ' FROM rakymp.rak_purku_energia_gco2m2 WHERE skenaario = $1 AND vuosi = $2'
-        INTO rak_purku_energia_gco2m2  USING scenario, year;
+    EXECUTE 'SELECT ' || rakennustyyppi || ' FROM built.build_demolish_energy_gco2m2 WHERE scenario = $1 AND year = $2'
+        INTO rak_purku_energia_gco2m2  USING calculationScenario, calculationYear;
     
     /* Lasketaan ja palautetaan päästöt CO2-ekvivalentteina [gCO2-ekv/v] */
     /* Calculate and return emissions as CO2-equivalents [gCO2-ekv/a] */
