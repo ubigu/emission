@@ -37,7 +37,7 @@ BEGIN
             -- Kiinteistöjen sähkönkulutus kerrosalaa kohti
             -- Electricity consumption of integrated property technology
             SELECT sahko_kiinteisto_kwhm2 AS kwh
-            FROM rakymp.sahko_kiinteisto_kwhm2_new
+            FROM built.electricity_property_kwhm2
             WHERE scenario = %2$L
                 AND rakennus_tyyppi = %3$L
                 AND rakv = %4$L
@@ -47,16 +47,16 @@ BEGIN
             -- Change of property electricity consumption according to year of building
         
             SELECT CASE WHEN %4$L::int > 2010 THEN 1 ELSE %4$I END as change
-                FROM rakymp.sahko_kiinteisto_muutos_new
+                FROM built.electricity_property_change
                 WHERE scenario = %2$L AND year = %1$L
                 LIMIT 1
         ),
         electricity_gco2kwh AS (
             -- Kulutetun sähkön ominaispäästökerroin [gCO2-ekv/kWh].
             SELECT el.gco2kwh::int AS gco2
-            FROM energia.sahko el
-                WHERE el.vuosi = %1$L
-                AND el.skenaario = %2$L
+            FROM energy.electricity el
+                WHERE el.year = %1$L
+                AND el.scenario = %2$L
                 AND el.metodi = ''em''
                 AND el.paastolaji = ''tuotanto''
         )
