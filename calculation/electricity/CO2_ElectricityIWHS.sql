@@ -38,19 +38,19 @@ BEGIN
             electricity_gco2kwh AS (
                 -- Kulutetun sähkön ominaispäästökerroin [gCO2-ekv/kWh]
                 SELECT el.gco2kwh::real AS gco2 
-                FROM energia.sahko el
-                    WHERE el.vuosi = %4$L 
-                    AND el.skenaario = %3$L
+                FROM energy.electricity el
+                    WHERE el.year = %4$L 
+                    AND el.scenario = %3$L
                     AND el.metodi = ''em''
                     AND el.paastolaji = ''tuotanto'' LIMIT 1
             )
             -- rakennustyypissä tapahtuvan toiminnan sähköintensiteetti kerrosneliömetriä kohti [kWh/m2]
             SELECT ry.%1$I * %6$L::int * el.gco2
-            FROM rakymp.%2$I ry, electricity_gco2kwh el
+            FROM built.%2$I ry, electricity_gco2kwh el
                 WHERE ry.scenario = %3$L AND ry.year = %4$L AND ry.mun::int = %5$L LIMIT 1',
             buildingType,
-            CASE WHEN buildingType = ANY(services) THEN 'sahko_palv_kwhm2_new'
-                WHEN buildingType != 'varast' THEN 'sahko_teoll_kwhm2_new' ELSE 'sahko_varast_kwhm2_new' END,
+            CASE WHEN buildingType = ANY(services) THEN 'electricity_service_kwhm2'
+                WHEN buildingType != 'varast' THEN 'electricity_industry_kwhm2' ELSE 'electricity_warehouse_kwhm2' END,
             calculationScenario,
             calculationYear,
             municipality,
