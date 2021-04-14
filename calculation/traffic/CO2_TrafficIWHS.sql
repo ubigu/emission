@@ -66,9 +66,9 @@ BEGIN
         ), electricity_gco2kwh AS (
             -- Kulutetun sähkön ominaispäästökerroin [gCO2-ekv/kWh]
             SELECT el.gco2kwh::int AS gco2
-            FROM energia.sahko el
-                WHERE el.vuosi = %1$L
-                AND el.skenaario = %2$L
+            FROM energy.electricity el
+                WHERE el.year = %1$L
+                AND el.scenario = %2$L
                 AND el.metodi = ''em''
                 AND el.paastolaji = ''tuotanto'' LIMIT 1
         ),
@@ -98,12 +98,12 @@ BEGIN
         -- According to Turunen V. TAVARALIIKENTEEN MALLINTAMISESTA HELSINGIN SEUDULLA,
         -- These original traffic estimates create approximately twice the observed amount. Thus half everything.
         (SELECT f.kmuoto, f.%5$I::real *
-            CASE WHEN %8$L = ''teoll_suorite'' THEN d.%5$I / (CASE WHEN %5$L != ''varast'' THEN 13.5 ELSE 46 END)
+            CASE WHEN %8$L = ''industr_performance'' THEN d.%5$I / (CASE WHEN %5$L != ''varast'' THEN 13.5 ELSE 46 END)
                 * (0.000000000245131* %6$L^2 -0.000026867899351 * %6$L + 0.801629386363636) * 0.01
                 ELSE d.%5$I * 0.01 END
             * %9$L as km
-        FROM liikenne.%7$I f
-            LEFT JOIN liikenne.%8$I d
+        FROM traffic.%7$I f
+            LEFT JOIN traffic.%8$I d
             on d.kmuoto = f.kmuoto and d.year = f.year and d.scenario = f.scenario and d.mun::int = f.mun::int
             WHERE f.kmuoto = ANY(%4$L) AND f.year = %1$L AND f.scenario = %2$L AND f.mun::int = %3$L)
         SELECT sum(kwh * gco2 * km / 2) * %6$L
@@ -116,8 +116,8 @@ BEGIN
     buildingType, -- 5
     floorSpace::real,
      -- 6 - muuntaa kerrosneliömetrit sadoiksi kerrosneliömetreiksi (0.01)
-    CASE WHEN buildingType = ANY(services) THEN 'palv_kuljetus_km' ELSE 'teoll_kuljetus_km' END, -- 7
-    CASE WHEN buildingType = ANY(services) THEN 'palv_suorite' ELSE 'teoll_suorite' END, -- 8
+    CASE WHEN buildingType = ANY(services) THEN 'services_transport_km' ELSE 'industr_transport_km' END, -- 7
+    CASE WHEN buildingType = ANY(services) THEN 'service_performance' ELSE 'industr_performance' END, -- 8
     260) INTO gco2_output; -- 9 - Arkipäivien lukumäärä vuodessa (260) [vrk/a].
     
     RETURN gco2_output;
