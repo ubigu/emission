@@ -62,7 +62,7 @@ BEGIN
         IF heatSource IS NOT NULL THEN
             EXECUTE FORMAT('
                 SELECT %1$I::real
-                    FROM rakymp.tilat_hyotysuhde_new
+                    FROM built.spaces_efficiency
                     WHERE rakennus_tyyppi = %2$L
                         AND rakv::int = %3$s::int
                         AND mun::int = %5$s::int LIMIT 1
@@ -73,13 +73,13 @@ BEGIN
             /* Used when basing the analysis on pure YKR data */
             SELECT array[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, turve, hiili, maalampo, muu_lammitys]
                 INTO lammitysosuus
-                    FROM rakymp.lammitysmuotojakauma
-                    WHERE skenaario = calculationScenario
+                    FROM built.distribution_heating_systems
+                    WHERE scenario = calculationScenario
                     AND rakennus_tyyppi = buildingType
                     AND rakv = buildingYear
-                    AND vuosi = calculationYear;
+                    AND year = calculationYear;
             SELECT array[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, turve, hiili, maalampo, muu_lammitys]
-                INTO hyotysuhde_a FROM rakymp.tilat_hyotysuhde WHERE rakennus_tyyppi = buildingType AND rakv = buildingYear;
+                INTO hyotysuhde_a FROM built.spaces_efficiency WHERE rakennus_tyyppi = buildingType AND rakv = buildingYear;
         END IF;
 
             /* Erityyppisten tilojen ominaislämmitystarve kerrosneliötä kohden */
@@ -96,7 +96,7 @@ BEGIN
                 -- Rakennustyypin ikäluokkakohtainen kerrosneliömetrin lämmittämiseen vuodessa tarvittu nettolämmitysenergia.
                 -- Kerroin huomioi olevan rakennuskannan energiatehokkuuden kehityksen [kWh/m2/a].
                 SELECT %6$I as kwhm2
-                FROM rakymp.tilat_kwhm2_new 
+                FROM built.spaces_kwhm2
                     WHERE scenario = %1$L AND rakv = %2$L AND mun::int = %3$L AND year = %4$L LIMIT 1),
                 heating as (
                     SELECT ((1 - 0.005 * (%4$L::int - 2015)) * multiplier)::real as scaler
@@ -119,15 +119,15 @@ BEGIN
                 ORDER BY %3$I DESC LIMIT 1
             ), electricity AS (
                 SELECT el.gco2kwh::int AS gco2kwh
-                FROM energia.sahko el
-                    WHERE el.vuosi = %1$L
-                    AND el.skenaario = %2$L
+                FROM energy.electricity el
+                    WHERE el.year = %1$L
+                    AND el.scenario = %2$L
                     AND el.metodi = ''em''
                     AND el.paastolaji = ''tuotanto''
             ), spaces AS (
                 --  Lämmönlähteiden kasvihuonekaasupäästöjen ominaispäästökertoimet [gCO2-ekv/kWh]
                 SELECT array[kevyt_oljy, raskas_oljy, kaasu, puu, turve, hiili, muu_lammitys] as gco2kwh 
-                FROM energia.tilat_gco2kwh t
+                FROM energy.spaces_gco2kwh t
                 WHERE t.vuosi = %1$L
             ) SELECT
                 array[

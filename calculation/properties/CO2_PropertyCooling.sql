@@ -38,7 +38,7 @@ BEGIN
     /* Dummy-kertoimet jäähdytysmuodoille | Dummy multipliers by method of cooling */
     /* Jäähdytyksen ominaispäästökertoimet | Emission values for cooling */
 
-    -- SELECT array[kaukok, sahko, pumput, muu] FROM energia.jaahdytys_gco2kwh ej WHERE ej.vuosi = calculationYear AND ej.skenaario = calculationScenario INTO j_gco2kwh;
+    -- SELECT array[kaukok, sahko, pumput, muu] FROM energy.cooling_gco2kwh ej WHERE ej.year = calculationYear AND ej.scenario = calculationScenario INTO j_gco2kwh;
     -- SELECT array(SELECT unnest(array[0, 1, 1, 0]) * sahko_gco2kwh + unnest(j_gco2kwh) * unnest(array[1, 0, 0, 1])) INTO jaahdytys_gco2kwh;
 
         -- Tällä hetkellä luvut sähkön osalta, jaahdytys_sahko = aina 1
@@ -51,13 +51,13 @@ BEGIN
                 SELECT
                     jaahdytys_osuus -- Rakennusten jäähdytettävät osuudet | Proportion of different types of buildings cooled 
                     * jaahdytys_kwhm2 AS kwhm2 -- Jäähdytyksen energiankulutus kerrosalaa kohden || Energy consumption of cooling buildings per floor area
-                FROM rakymp.jaahdytys_osuus_kwhm2_new
+                FROM built.cooling_proportions_kwhm2
                  WHERE mun::int = %2$L AND scenario = %3$L AND rakennus_tyyppi = %5$L AND rakv = %6$L LIMIT 1
             ), gco2kwh AS (
                 SELECT el.gco2kwh::int AS gco2
-                FROM energia.sahko el
-                    WHERE el.vuosi = %4$L
-                    AND el.skenaario = %3$L
+                FROM energy.electricity el
+                    WHERE el.year = %4$L
+                    AND el.scenario = %3$L
                     AND el.metodi = ''em''
                     AND el.paastolaji = ''tuotanto''
             )

@@ -18,7 +18,7 @@ public.il_build_new_co2(
   --  rakennusvuosi integer, -- Rakennusvuosikymmen tai -vuosi (2017 alkaen). Tässä: Rakennuksen valmistumisvuosi = laskentavuosi.
     calculationYear integer, -- Vuosi, jonka perusteella päästöt lasketaan / viitearvot haetaan
     rakennustyyppi varchar, -- Rakennustyyppi, esim. 'erpien', 'rivita'
-    scenario varchar -- PITKO:n mukainen kehitysskenaario
+    calculationScenario varchar -- PITKO:n mukainen kehitysskenaario
 )
 RETURNS real AS
 $$
@@ -44,13 +44,13 @@ ELSE
 --    ELSE
         /* Haetaan laskentavuoden ja kehitysskenaarion perusteella rakennustyyppikohtaiset uudisrakentamisen energiankulutuksen kasvihuonekaasupäästöt */
         /* Get the unit emissions for energy consumption of construction by year of building, scenario and building type */
-        EXECUTE 'SELECT ' || rakennustyyppi || ' FROM rakymp.rak_energia_gco2m2 WHERE vuosi = $1 AND skenaario = $2'
-            INTO rak_energia_gco2m2 USING calculationYear, scenario;
+        EXECUTE 'SELECT ' || rakennustyyppi || ' FROM built.constr_new_build_energy_gco2m2 WHERE year = $1 AND scenario = $2'
+            INTO rak_energia_gco2m2 USING calculationYear, calculationScenario;
         
         /* Haetaan laskentavuoden ja kehitysskenaarion perusteella rakennustyyppikohtaiset uudisrakentamisen materiaalien valmistuksen kasvihuonekaasupäästöt */
         /* Get the unit emissions for production of materials for construction by year of building, scenario and building type */
-        EXECUTE 'SELECT ' || CASE WHEN rakennustyyppi IN ('erpien', 'rivita', 'askert') THEN rakennustyyppi ELSE 'muut' END || ' FROM rakymp.rak_materia_gco2m2 WHERE vuosi = $1 AND skenaario = $2'
-            INTO rak_materia_gco2m2 USING calculationYear, scenario;
+        EXECUTE 'SELECT ' || CASE WHEN rakennustyyppi IN ('erpien', 'rivita', 'askert') THEN rakennustyyppi ELSE 'muut' END || ' FROM built.build_materia_gco2m2 WHERE year = $1 AND scenario = $2'
+            INTO rak_materia_gco2m2 USING calculationYear, calculationScenario;
 
         /* Lasketaan ja palautetaan päästöt CO2-ekvivalenttia [gCO2-ekv/v] */
         /* Calculate and return emissions as CO2-equivalents [gCO2-ekv/a] */

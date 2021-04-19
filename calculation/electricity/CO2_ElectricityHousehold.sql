@@ -31,15 +31,15 @@ BEGIN
                 'WITH electricity_home_percapita AS (
                     -- Asukkaiden lisävaikutus asunnon sähkön kulutukseen. [kWh/as/a].
                     SELECT sahko_koti_as AS kwh
-                    FROM energia.sahko_koti_as sas
-                    WHERE sas.vuosi = %1$L
-                        AND sas.skenaario = %2$L
+                    FROM energy.electricity_home_percapita sas
+                    WHERE sas.year = %1$L
+                        AND sas.scenario = %2$L
                 ), electricity_gco2kwh AS (
                      -- Kulutetun sähkön ominaispäästökerroin [gCO2-ekv/kWh].
                     SELECT el.gco2kwh::int AS gco2
-                    FROM energia.sahko el
-                        WHERE el.vuosi = %1$L
-                        AND el.skenaario = %2$L
+                    FROM energy.electricity el
+                        WHERE el.year = %1$L
+                        AND el.scenario = %2$L
                         AND el.metodi = ''em''
                         AND el.paastolaji = ''tuotanto''
                 )
@@ -56,16 +56,16 @@ BEGIN
                 'WITH electricity_home_devices AS (
                      -- Rakennustyyppikohtainen laitesähkön keskimääräinen peruskulutus [kWh/m2/a]
                     SELECT %3$I::int AS kwh
-                    FROM rakymp.sahko_koti_laite WHERE skenaario = %2$L AND vuosi = %1$L
+                    FROM built.electricity_home_device WHERE scenario = %2$L AND year = %1$L
                 ), electricity_home_lighting AS (
                      -- Rakennustyyppikohtainen sisävalaistuksen sähkön käyttö kerrosneliötä kohti huomioiden tekniikan ja muuhun valaistukseen liittyvän sähkön käytön kehityksen [kWh/m2/a]
                     SELECT %3$I::int AS kwh
-                    FROM rakymp.sahko_koti_valo WHERE skenaario = %2$L AND vuosi = %1$L
+                    FROM built.electricity_home_light WHERE scenario = %2$L AND year = %1$L
                 ), electricity_gco2kwh AS (
                     SELECT el.gco2kwh::int AS gco2 -- Kulutetun sähkön ominaispäästökerroin [gCO2-ekv/kWh].
-                    FROM energia.sahko el
-                        WHERE el.vuosi = %1$L
-                        AND el.skenaario = %2$L
+                    FROM energy.electricity el
+                        WHERE el.year = %1$L
+                        AND el.scenario = %2$L
                         AND el.metodi = ''em''
                         AND el.paastolaji = ''tuotanto''
                 )

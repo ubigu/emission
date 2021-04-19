@@ -170,9 +170,9 @@ END IF;
     ), electricity_gco2kwh AS (
         -- Kulutetun sähkön ominaispäästökerroin [gCO2-ekv/kWh]
         SELECT el.gco2kwh::int AS gco2
-        FROM energia.sahko el
-            WHERE el.vuosi::int = %1$s::int
-            AND el.skenaario::varchar = %2$L
+        FROM energy.electricity el
+            WHERE el.year::int = %1$s::int
+            AND el.scenario::varchar = %2$L
             AND el.metodi = ''em''
             AND el.paastolaji = ''tuotanto'' LIMIT 1
     ), gco2kwh_matrix as (
@@ -193,14 +193,14 @@ END IF;
         FROM power_distribution, power_kwhkm, gco2kwh_matrix
     ), load_personal as (
         SELECT %4$I as load_p
-            FROM liikenne.%9$I
+            FROM traffic.%9$I
                 WHERE year::int = %1$L::int
                     AND scenario = %2$L
                     AND mun::int = %3$L::int
                 LIMIT 1
     ), load_work as (
         SELECT %4$I as load_w
-            FROM liikenne.%10$I
+            FROM traffic.%10$I
                 WHERE year::int = %1$L::int
                     AND scenario = %2$L
                     AND mun::int = %3$L::int
@@ -234,8 +234,8 @@ END IF;
         COALESCE(pop,0), -- 6
         COALESCE(employ,0), -- 7
         'hlt_workshare', -- 8
-        'apliikenne_kuormitus_new', -- 9,  asukkaiden kulkumuotojen keskikuormitukset laskentavuonna [hkm/km].
-        'tpliikenne_kuormitus_new', -- 10, työssäkäyvien kulkumuotojen keskikuormitus laskentavuonna [hkm/km].
+        'citizen_traffic_stress', -- 9,  asukkaiden kulkumuotojen keskikuormitukset laskentavuonna [hkm/km].
+        'workers_traffic_stress', -- 10, työssäkäyvien kulkumuotojen keskikuormitus laskentavuonna [hkm/km].
         kmuoto_hkmvrk, -- 11
         365, -- 12
         365 -- 13 - Tilastojen mukaan tehollisia työpäiviä keskimäärin noin 228-230 per vuosi ?
