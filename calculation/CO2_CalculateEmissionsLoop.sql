@@ -2,7 +2,6 @@ DROP FUNCTION IF EXISTS CO2_CalculateEmissionsLoop;
 
 CREATE OR REPLACE FUNCTION
 public.CO2_CalculateEmissionsLoop(
-    buildings regclass, -- ykr rakennusdatan taulunimi
     aoi regclass, -- Tutkimusalue | area of interest
     calculationScenario varchar, -- PITKO:n mukainen scenario
     method varchar, -- Päästöallokointimenetelmä, 'em' tai 'hjm'
@@ -21,6 +20,7 @@ RETURNS TABLE(
     year date,
     floorspace int,
     pop smallint,
+    employ smallint,
     tilat_vesi_tco2 real,
     tilat_lammitys_tco2 real,
     tilat_jaahdytys_tco2 real,
@@ -56,13 +56,13 @@ BEGIN
             CREATE TEMP TABLE res AS
             SELECT * FROM
                 public.CO2_CalculateEmissions(
-                    buildings, aoi, calculationYear, calculationScenario, method, electricityType, baseYear, targetYear, plan_areas, plan_centers, plan_transit
+                    aoi, calculationYear, calculationScenario, method, electricityType, baseYear, targetYear, plan_areas, plan_centers, plan_transit
                 );
         ELSE 
             INSERT INTO res
             SELECT * FROM
                 public.CO2_CalculateEmissions(
-                    buildings, aoi, calculationYear, calculationScenario, method, electricityType, baseYear, targetYear, plan_areas, plan_centers, plan_transit
+                    aoi, calculationYear, calculationScenario, method, electricityType, baseYear, targetYear, plan_areas, plan_centers, plan_transit
                 );
         END IF;
         

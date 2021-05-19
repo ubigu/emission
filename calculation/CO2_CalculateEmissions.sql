@@ -3,7 +3,7 @@ DROP FUNCTION IF EXISTS CO2_CalculateEmissions;
 CREATE OR REPLACE FUNCTION
 public.CO2_CalculateEmissions(
     aoi regclass, -- Tutkimusalue | area of interest
-    calculationYear integer default extract('year' from now()), -- Laskennan viitearvojen year || calculation reference year
+    calculationYear integer default date_part('year', now()), -- Laskennan viitearvojen year || calculation reference year
     calculationScenario varchar default 'wem', -- PITKO-kehitysskenaario
     method varchar default 'em', -- Päästöallokoinnin laskentamenetelmä
     electricityType varchar default 'tuotanto', -- Sähkön päästölaji
@@ -20,6 +20,7 @@ RETURNS TABLE(
     year date,
     floorspace int,
     pop smallint,
+    employ smallint,
     tilat_vesi_tco2 real,
     tilat_lammitys_tco2 real,
     tilat_jaahdytys_tco2 real,
@@ -178,13 +179,13 @@ BEGIN
         RAISE NOTICE 'Updating building data';
         IF localbuildings = true THEN
             IF refined = true THEN 
-                EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS grid2 AS SELECT xyind::varchar, rakv::int, energiam, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, myymal_pien_ala :: int, myymal_super_ala :: int, myymal_hyper_ala :: int, myymal_muu_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, teoll_elint_ala :: int, teoll_tekst_ala :: int, teoll_puu_ala :: int, teoll_paper_ala :: int, teoll_miner_ala :: int, teoll_kemia_ala :: int, teoll_kone_ala :: int, teoll_mjalos_ala :: int, teoll_metal_ala :: int, teoll_vesi_ala :: int, teoll_energ_ala :: int, teoll_yhdysk_ala :: int, teoll_kaivos_ala :: int, teoll_muu_ala :: int, varast_ala :: int, muut_ala :: int FROM (SELECT * FROM il_update_buildings_refined(''rak_initial'', ''grid'', %L, %L, %L, %L)) updatedbuildings', calculationYear, baseYear, targetYear, calculationScenario);
+                EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS grid2 AS SELECT xyind::varchar, rakv::int, energiam, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, myymal_pien_ala :: int, myymal_super_ala :: int, myymal_hyper_ala :: int, myymal_muu_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, teoll_elint_ala :: int, teoll_tekst_ala :: int, teoll_puu_ala :: int, teoll_paper_ala :: int, teoll_miner_ala :: int, teoll_kemia_ala :: int, teoll_kone_ala :: int, teoll_mjalos_ala :: int, teoll_metal_ala :: int, teoll_vesi_ala :: int, teoll_energ_ala :: int, teoll_yhdysk_ala :: int, teoll_kaivos_ala :: int, teoll_muu_ala :: int, varast_ala :: int, muut_ala :: int FROM (SELECT * FROM CO2_UpdateBuildingsRefined(''rak_initial'', ''grid'', %L, %L, %L, %L)) updatedbuildings', calculationYear, baseYear, targetYear, calculationScenario);
             ELSE 
-                EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS grid2 AS SELECT xyind::varchar, rakv::int, energiam, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, varast_ala :: int, muut_ala :: int FROM (SELECT * FROM il_update_buildings_local(''rak_initial'', ''grid'', %L, %L, %L, %L)) updatedbuildings', calculationYear, baseYear, targetYear, calculationScenario);
+                EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS grid2 AS SELECT xyind::varchar, rakv::int, energiam, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, varast_ala :: int, muut_ala :: int FROM (SELECT * FROM CO2_UpdateBuildingsLocal(''rak_initial'', ''grid'', %L, %L, %L, %L)) updatedbuildings', calculationYear, baseYear, targetYear, calculationScenario);
             END IF;
             CREATE INDEX ON grid2 (rakv, energiam);
         ELSE
-            EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS grid2 AS SELECT xyind::varchar, rakv::int, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, varast_ala :: int, muut_ala :: int FROM (SELECT * FROM il_update_buildings(''rak_initial'', ''grid'', %L)) updatedbuildings', year);
+            EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS grid2 AS SELECT xyind::varchar, rakv::int, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, varast_ala :: int, muut_ala :: int FROM (SELECT * FROM CO2_UpdateBuildings(''rak_initial'', ''grid'', %L)) updatedbuildings', year);
             CREATE INDEX ON grid2 (rakv);        
         END IF;
         DROP TABLE IF EXISTS rak_initial;
@@ -262,7 +263,8 @@ BEGIN
         g.zone::int,
         NULL::date as year,
         0::int floorspace,
-        COALESCE(g.pop, 0)::smallint,
+        COALESCE(g.pop, 0)::smallint pop,
+        COALESCE(g.employ, 0)::smallint employ,
         0::real tilat_vesi_tco2,
         0::real tilat_lammitys_tco2,
         0::real tilat_jaahdytys_tco2,
@@ -422,18 +424,18 @@ BEGIN
             (SELECT CO2_ElectricityHousehold(calculationYear, calculationScenario, askert_ala, 'askert')))
         AS sahko_kotitaloudet_co2,
         /* Korjausrakentaminen ja saneeraus | Renovations and large-scale overhauls of buildings */
-        SUM((SELECT il_build_renovate_co2(erpien_ala, calculationYear, 'erpien', g2.rakv, calculationScenario)) +
-            (SELECT il_build_renovate_co2(rivita_ala, calculationYear, 'rivita', g2.rakv, calculationScenario)) +
-            (SELECT il_build_renovate_co2(askert_ala, calculationYear, 'askert', g2.rakv, calculationScenario)) +
-            (SELECT il_build_renovate_co2(liike_ala, calculationYear, 'liike', g2.rakv, calculationScenario)) +
-            (SELECT il_build_renovate_co2(tsto_ala, calculationYear, 'tsto', g2.rakv, calculationScenario)) +
-            (SELECT il_build_renovate_co2(liiken_ala, calculationYear, 'liiken', g2.rakv, calculationScenario)) +
-            (SELECT il_build_renovate_co2(hoito_ala, calculationYear, 'hoito', g2.rakv, calculationScenario)) +
-            (SELECT il_build_renovate_co2(kokoon_ala, calculationYear, 'kokoon', g2.rakv, calculationScenario)) +
-            (SELECT il_build_renovate_co2(opetus_ala, calculationYear, 'opetus', g2.rakv, calculationScenario)) +
-            (SELECT il_build_renovate_co2(teoll_ala, calculationYear, 'teoll', g2.rakv, calculationScenario)) +
-            (SELECT il_build_renovate_co2(varast_ala, calculationYear, 'varast', g2.rakv, calculationScenario)) +
-            (SELECT il_build_renovate_co2(muut_ala, calculationYear, 'muut', g2.rakv, calculationScenario)))
+        SUM((SELECT CO2_BuildRenovate(erpien_ala, calculationYear, 'erpien', g2.rakv, calculationScenario)) +
+            (SELECT CO2_BuildRenovate(rivita_ala, calculationYear, 'rivita', g2.rakv, calculationScenario)) +
+            (SELECT CO2_BuildRenovate(askert_ala, calculationYear, 'askert', g2.rakv, calculationScenario)) +
+            (SELECT CO2_BuildRenovate(liike_ala, calculationYear, 'liike', g2.rakv, calculationScenario)) +
+            (SELECT CO2_BuildRenovate(tsto_ala, calculationYear, 'tsto', g2.rakv, calculationScenario)) +
+            (SELECT CO2_BuildRenovate(liiken_ala, calculationYear, 'liiken', g2.rakv, calculationScenario)) +
+            (SELECT CO2_BuildRenovate(hoito_ala, calculationYear, 'hoito', g2.rakv, calculationScenario)) +
+            (SELECT CO2_BuildRenovate(kokoon_ala, calculationYear, 'kokoon', g2.rakv, calculationScenario)) +
+            (SELECT CO2_BuildRenovate(opetus_ala, calculationYear, 'opetus', g2.rakv, calculationScenario)) +
+            (SELECT CO2_BuildRenovate(teoll_ala, calculationYear, 'teoll', g2.rakv, calculationScenario)) +
+            (SELECT CO2_BuildRenovate(varast_ala, calculationYear, 'varast', g2.rakv, calculationScenario)) +
+            (SELECT CO2_BuildRenovate(muut_ala, calculationYear, 'muut', g2.rakv, calculationScenario)))
         AS rak_korjaussaneeraus_co2
             FROM grid2 g2
                 GROUP BY g2.xyind
@@ -563,18 +565,18 @@ BEGIN
             rak_uudis_tco2 = COALESCE(buildings.rak_uudis_co2 * grams_to_tons, 0)
         FROM
             (SELECT DISTINCT ON (grid2.xyind) grid2.xyind,
-            SUM((SELECT il_build_new_co2(erpien_ala, calculationYear, 'erpien', calculationScenario)) +
-                (SELECT il_build_new_co2(rivita_ala, calculationYear, 'rivita', calculationScenario)) +
-                (SELECT il_build_new_co2(askert_ala, calculationYear, 'askert', calculationScenario)) +
-                (SELECT il_build_new_co2(liike_ala, calculationYear, 'liike', calculationScenario)) +
-                (SELECT il_build_new_co2(tsto_ala, calculationYear, 'tsto', calculationScenario)) +
-                (SELECT il_build_new_co2(liiken_ala, calculationYear, 'liiken', calculationScenario)) +
-                (SELECT il_build_new_co2(hoito_ala, calculationYear, 'hoito', calculationScenario)) +
-                (SELECT il_build_new_co2(kokoon_ala, calculationYear, 'kokoon', calculationScenario)) +
-                (SELECT il_build_new_co2(opetus_ala, calculationYear, 'opetus', calculationScenario)) +
-                (SELECT il_build_new_co2(teoll_ala, calculationYear, 'teoll', calculationScenario)) +
-                (SELECT il_build_new_co2(varast_ala, calculationYear, 'varast', calculationScenario)) +
-                (SELECT il_build_new_co2(muut_ala, calculationYear, 'muut', calculationScenario))
+            SUM((SELECT CO2_BuildConstruct(erpien_ala, calculationYear, 'erpien', calculationScenario)) +
+                (SELECT CO2_BuildConstruct(rivita_ala, calculationYear, 'rivita', calculationScenario)) +
+                (SELECT CO2_BuildConstruct(askert_ala, calculationYear, 'askert', calculationScenario)) +
+                (SELECT CO2_BuildConstruct(liike_ala, calculationYear, 'liike', calculationScenario)) +
+                (SELECT CO2_BuildConstruct(tsto_ala, calculationYear, 'tsto', calculationScenario)) +
+                (SELECT CO2_BuildConstruct(liiken_ala, calculationYear, 'liiken', calculationScenario)) +
+                (SELECT CO2_BuildConstruct(hoito_ala, calculationYear, 'hoito', calculationScenario)) +
+                (SELECT CO2_BuildConstruct(kokoon_ala, calculationYear, 'kokoon', calculationScenario)) +
+                (SELECT CO2_BuildConstruct(opetus_ala, calculationYear, 'opetus', calculationScenario)) +
+                (SELECT CO2_BuildConstruct(teoll_ala, calculationYear, 'teoll', calculationScenario)) +
+                (SELECT CO2_BuildConstruct(varast_ala, calculationYear, 'varast', calculationScenario)) +
+                (SELECT CO2_BuildConstruct(muut_ala, calculationYear, 'muut', calculationScenario))
             ) AS rak_uudis_co2
                 FROM grid2  
                     WHERE grid2.rakv = calculationYear
@@ -586,18 +588,18 @@ BEGIN
         /* Calculating emissions for demolishing buildings */
         UPDATE results SET rak_purku_tco2 = COALESCE(poistot.rak_purku_co2 * grams_to_tons, 0)
             FROM (SELECT p.xyind,
-                SUM((SELECT il_build_demolish_co2(p.erpien::real, calculationYear, 'erpien', calculationScenario)) +
-                    (SELECT il_build_demolish_co2(p.rivita::real, calculationYear, 'rivita', calculationScenario)) +
-                    (SELECT il_build_demolish_co2(p.askert::real, calculationYear, 'askert', calculationScenario)) +
-                    (SELECT il_build_demolish_co2(p.liike::real, calculationYear, 'liike', calculationScenario)) +
-                    (SELECT il_build_demolish_co2(p.tsto::real, calculationYear, 'tsto', calculationScenario)) +
-                    (SELECT il_build_demolish_co2(p.liiken::real, calculationYear, 'liiken', calculationScenario)) +
-                    (SELECT il_build_demolish_co2(p.hoito::real, calculationYear, 'hoito', calculationScenario)) +
-                    (SELECT il_build_demolish_co2(p.kokoon::real, calculationYear, 'kokoon', calculationScenario)) +
-                    (SELECT il_build_demolish_co2(p.opetus::real, calculationYear, 'opetus', calculationScenario)) +
-                    (SELECT il_build_demolish_co2(p.teoll::real, calculationYear, 'teoll', calculationScenario)) +
-                    (SELECT il_build_demolish_co2(p.varast::real, calculationYear, 'varast', calculationScenario)) +
-                    (SELECT il_build_demolish_co2(p.muut::real, calculationYear, 'muut', calculationScenario))
+                SUM((SELECT CO2_BuildDemolish(p.erpien::real, calculationYear, 'erpien', calculationScenario)) +
+                    (SELECT CO2_BuildDemolish(p.rivita::real, calculationYear, 'rivita', calculationScenario)) +
+                    (SELECT CO2_BuildDemolish(p.askert::real, calculationYear, 'askert', calculationScenario)) +
+                    (SELECT CO2_BuildDemolish(p.liike::real, calculationYear, 'liike', calculationScenario)) +
+                    (SELECT CO2_BuildDemolish(p.tsto::real, calculationYear, 'tsto', calculationScenario)) +
+                    (SELECT CO2_BuildDemolish(p.liiken::real, calculationYear, 'liiken', calculationScenario)) +
+                    (SELECT CO2_BuildDemolish(p.hoito::real, calculationYear, 'hoito', calculationScenario)) +
+                    (SELECT CO2_BuildDemolish(p.kokoon::real, calculationYear, 'kokoon', calculationScenario)) +
+                    (SELECT CO2_BuildDemolish(p.opetus::real, calculationYear, 'opetus', calculationScenario)) +
+                    (SELECT CO2_BuildDemolish(p.teoll::real, calculationYear, 'teoll', calculationScenario)) +
+                    (SELECT CO2_BuildDemolish(p.varast::real, calculationYear, 'varast', calculationScenario)) +
+                    (SELECT CO2_BuildDemolish(p.muut::real, calculationYear, 'muut', calculationScenario))
                 ) AS rak_purku_co2
                     FROM poistuma_alat p
                         GROUP BY p.xyind

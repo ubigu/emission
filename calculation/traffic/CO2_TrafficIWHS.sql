@@ -98,14 +98,20 @@ BEGIN
         -- According to Turunen V. TAVARALIIKENTEEN MALLINTAMISESTA HELSINGIN SEUDULLA,
         -- These original traffic estimates create approximately twice the observed amount. Thus half everything.
         (SELECT f.kmuoto, f.%5$I::real *
-            CASE WHEN %8$L = ''industr_performance'' THEN d.%5$I / (CASE WHEN %5$L != ''varast'' THEN 13.5 ELSE 46 END)
-                * (0.000000000245131* %6$L^2 -0.000026867899351 * %6$L + 0.801629386363636) * 0.01
-                ELSE d.%5$I * 0.01 END
-            * %9$L as km
+            CASE WHEN %8$L = ''industr_performance'' THEN d.%5$I / (CASE WHEN %5$L != ''varast'' THEN 13.5 ELSE 46 END)::real
+                * (0.000000000245131 * %6$L^2 -0.000026867899351 * %6$L + 0.801629386363636)
+                ELSE d.%5$I END
+            * %9$L * 0.01 as km
         FROM traffic.%7$I f
             LEFT JOIN traffic.%8$I d
-            on d.kmuoto = f.kmuoto and d.year = f.year and d.scenario = f.scenario and d.mun::int = f.mun::int
-            WHERE f.kmuoto = ANY(%4$L) AND f.year = %1$L AND f.scenario = %2$L AND f.mun::int = %3$L)
+            ON d.kmuoto = f.kmuoto
+            AND d.year = f.year
+            AND d.scenario = f.scenario
+            AND d.mun::int = f.mun::int
+            WHERE f.kmuoto = ANY(%4$L)
+            AND f.year = %1$L
+            AND f.scenario = %2$L
+            AND f.mun::int = %3$L)
         SELECT sum(kwh * gco2 * km / 2) * %6$L
         FROM kwh_distribution kwh
             NATURAL JOIN distance',
@@ -114,8 +120,7 @@ BEGIN
     municipality, -- 3 
     ARRAY['kauto', 'pauto'], -- 4
     buildingType, -- 5
-    floorSpace::real,
-     -- 6 - muuntaa kerrosneliömetrit sadoiksi kerrosneliömetreiksi (0.01)
+    CASE WHEN floorSpace >= 100000 THEN 100000::real ELSE floorSpace end, -- 6 - kerrosneliömetrit
     CASE WHEN buildingType = ANY(services) THEN 'services_transport_km' ELSE 'industr_transport_km' END, -- 7
     CASE WHEN buildingType = ANY(services) THEN 'service_performance' ELSE 'industr_performance' END, -- 8
     260) INTO gco2_output; -- 9 - Arkipäivien lukumäärä vuodessa (260) [vrk/a].
