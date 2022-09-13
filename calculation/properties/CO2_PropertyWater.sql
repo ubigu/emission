@@ -15,7 +15,7 @@ DROP FUNCTION IF EXISTS CO2_PropertyWater;
 CREATE OR REPLACE FUNCTION
 public.CO2_PropertyWater(
 	municipality int,
-    calculationYear integer, -- Vuosi, jonka perusteella päästöt lasketaan / viitearvot haetaan
+    calculationYears integer[], -- [year based on which emission values are calculated, min, max calculation years]
     calculationScenario varchar, -- PITKO:n mukainen kehitysskenaario
     floorSpace int, -- Rakennustyypin ikäluokkakohtainen kerrosala YKR-ruudussa laskentavuonna. Lukuarvo riippuu laskentavuodesta sekä rakennuksen tyypistä ja ikäluokasta [m2]
     buildingType varchar, -- buildingType, esim. 'erpien', 'rivita'
@@ -26,6 +26,7 @@ public.CO2_PropertyWater(
 RETURNS real AS
 $$
 DECLARE -- Joillekin muuttujille on sekä yksittäiset että array-tyyppiset muuttujat, riippuen siitä, onko lähtödatana YKR-dataa (array) vai paikallisesti jalostettua rakennusdataa
+    calculationYear integer; 
     vesi_kwhm2 real; -- Rakennustyypin ikäluokan kerrosalaa kohti vesikuutiometrittäin lasketun lämpimän käyttöveden ominaiskulutuksen [m3/m2/a] ja yhden vesikuution lämmittämiseen tarvittavan energiamäärän 58,3 kWh/m3 tulo. Arvo riippuu laskentaskenaariosta sekä rakennuksen ikäluokasta ja tyypistä [kWh/m2,a].
     hyotysuhde real; -- Rakennustyypin ikäluokan lämmitysjärjestelmäkohtainen keskimääräinen vuosihyötysuhde tai lämpökerroin. Lukuarvo riippuu rakennuksen ikäluokasta, tyypistä ja lämmitysmuodosta [ei yksikköä].
     hyotysuhde_a real[]; -- Rakennustyypin ikäluokan lämmitysjärjestelmäkohtainen keskimääräinen vuosihyötysuhde tai lämpökerroin. Lukuarvo riippuu rakennuksen ikäluokasta, tyypistä ja lämmitysmuodosta [ei yksikköä].
@@ -43,6 +44,11 @@ BEGIN
     /* Muussa tapauksessa jatka laskentaan */
     /* In other cases continue with the calculation */
     ELSE
+
+        calculationYear := CASE WHEN calculationYears[1] < calculationYears[2] THEN calculationYears[2]
+        WHEN calculationYears[1] > calculationYears[3] THEN calculationYears[3]
+        ELSE calculationYears[1]
+        END;
 
         /* Käytetään kun on johdettu paikallisesta aineistosta lämmitys/energiamuototiedot ruututasolle */
         /* Used when local building register data has been used to derive grid level information incl. heating methods of building */

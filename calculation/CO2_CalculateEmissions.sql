@@ -3,7 +3,9 @@ DROP FUNCTION IF EXISTS CO2_CalculateEmissions;
 CREATE OR REPLACE FUNCTION
 public.CO2_CalculateEmissions(
     aoi regclass, -- Tutkimusalue | area of interest
-    calculationYear integer default date_part('year', now()), -- Laskennan viitearvojen year || calculation reference year
+    includeLongDistance boolean,
+    includeBusinessTravel boolean,
+    calculationYears integer[] default array[date_part('year', now()),2017,2050], -- Laskennan viitearvojen year || calculation reference year
     calculationScenario varchar default 'wem', -- PITKO-kehitysskenaario
     method varchar default 'em', -- Päästöallokoinnin laskentamenetelmä
     electricityType varchar default 'tuotanto', -- Sähkön päästölaji
@@ -11,12 +13,13 @@ public.CO2_CalculateEmissions(
     targetYear integer default NULL, -- Laskennan tavoitevuosi
     plan_areas regclass default NULL, -- Taulu, jossa käyttötarkoitusalueet tai vastaavat
     plan_centers regclass default NULL, -- Taulu, jossa kkreskusverkkotiedot 
-    plan_transit regclass default NULL) -- Taulu, jossa intensiivinen joukkoliikennejärjestelmä    
+    plan_transit regclass default NULL -- Taulu, jossa intensiivinen joukkoliikennejärjestelmä
+)    
 RETURNS TABLE(
     geom geometry(MultiPolygon, 3067),
     xyind varchar(13),
     mun int,
-    zone int,
+    zone bigint,
     year date,
     floorspace int,
     pop smallint,
@@ -28,7 +31,8 @@ RETURNS TABLE(
     sahko_kotitaloudet_tco2 real,
     sahko_palv_tco2 real,
     sahko_tv_tco2 real,
-    liikenne_hlo_tco2 real,
+    liikenne_as_tco2 real,
+    liikenne_tp_tco2 real,
     liikenne_tv_tco2 real,
     liikenne_palv_tco2 real,
     rak_korjaussaneeraus_tco2 real,
@@ -42,6 +46,7 @@ RETURNS TABLE(
 )
 AS $$
 DECLARE
+    calculationYear integer;
     localbuildings boolean;
     refined boolean;
     defaultdemolition boolean;
@@ -59,6 +64,11 @@ BEGIN
             calculationScenario := 'wem';
             initialScenario := 'static';
     END IF;
+
+    calculationYear := CASE WHEN calculationYears[1] < calculationYears[2] THEN calculationYears[2]
+        WHEN calculationYears[1] > calculationYears[3] THEN calculationYears[3]
+        ELSE calculationYears[1]
+    END;
 
     IF baseYear IS NULL
         THEN baseYear := calculationYear;
@@ -81,7 +91,7 @@ BEGIN
     /* Numeeristetaan suunnitelma-aineistoa | 'Numerizing' the given plan data */
     DROP TABLE IF EXISTS grid_temp;
     CREATE TEMP TABLE grid_temp AS
-        SELECT * FROM CO2_GridProcessing(aoi, calculationYear, baseYear, targetYear, plan_areas, plan_centers, plan_transit);
+        SELECT * FROM CO2_GridProcessing(aoi, calculationYear, baseYear, 1.25, targetYear, plan_areas, plan_centers, plan_transit);
     DROP TABLE IF EXISTS grid;
     ALTER TABLE grid_temp RENAME TO grid;
 
@@ -179,9 +189,9 @@ BEGIN
         RAISE NOTICE 'Updating building data';
         IF localbuildings = true THEN
             IF refined = true THEN 
-                EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS grid2 AS SELECT xyind::varchar, rakv::int, energiam, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, myymal_pien_ala :: int, myymal_super_ala :: int, myymal_hyper_ala :: int, myymal_muu_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, teoll_elint_ala :: int, teoll_tekst_ala :: int, teoll_puu_ala :: int, teoll_paper_ala :: int, teoll_miner_ala :: int, teoll_kemia_ala :: int, teoll_kone_ala :: int, teoll_mjalos_ala :: int, teoll_metal_ala :: int, teoll_vesi_ala :: int, teoll_energ_ala :: int, teoll_yhdysk_ala :: int, teoll_kaivos_ala :: int, teoll_muu_ala :: int, varast_ala :: int, muut_ala :: int FROM (SELECT * FROM CO2_UpdateBuildingsRefined(''rak_initial'', ''grid'', %L, %L, %L, %L)) updatedbuildings', calculationYear, baseYear, targetYear, calculationScenario);
+                EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS grid2 AS SELECT xyind::varchar, rakv::int, energiam, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, myymal_pien_ala :: int, myymal_super_ala :: int, myymal_hyper_ala :: int, myymal_muu_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, teoll_elint_ala :: int, teoll_tekst_ala :: int, teoll_puu_ala :: int, teoll_paper_ala :: int, teoll_miner_ala :: int, teoll_kemia_ala :: int, teoll_kone_ala :: int, teoll_mjalos_ala :: int, teoll_metal_ala :: int, teoll_vesi_ala :: int, teoll_energ_ala :: int, teoll_yhdysk_ala :: int, teoll_kaivos_ala :: int, teoll_muu_ala :: int, varast_ala :: int, muut_ala :: int FROM (SELECT * FROM CO2_UpdateBuildingsRefined(''rak_initial'', ''grid'', %L, %L, %L, %L)) updatedbuildings', calculationYears, baseYear, targetYear, calculationScenario);
             ELSE 
-                EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS grid2 AS SELECT xyind::varchar, rakv::int, energiam, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, varast_ala :: int, muut_ala :: int FROM (SELECT * FROM CO2_UpdateBuildingsLocal(''rak_initial'', ''grid'', %L, %L, %L, %L)) updatedbuildings', calculationYear, baseYear, targetYear, calculationScenario);
+                EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS grid2 AS SELECT xyind::varchar, rakv::int, energiam, rakyht_ala :: int, asuin_ala :: int, erpien_ala :: int, rivita_ala :: int, askert_ala :: int, liike_ala :: int, myymal_ala :: int, majoit_ala :: int, asla_ala :: int, ravint_ala :: int, tsto_ala :: int, liiken_ala :: int, hoito_ala :: int, kokoon_ala :: int, opetus_ala :: int, teoll_ala :: int, varast_ala :: int, muut_ala :: int FROM (SELECT * FROM CO2_UpdateBuildingsLocal(''rak_initial'', ''grid'', %L, %L, %L, %L)) updatedbuildings', calculationYears, baseYear, targetYear, calculationScenario);
             END IF;
             CREATE INDEX ON grid2 (rakv, energiam);
         ELSE
@@ -222,8 +232,8 @@ BEGIN
                     kokoon_ala :: int,
                     opetus_ala :: int,
                     teoll_ala :: int,
-                    teoll_elint_ala ::
-                    int, teoll_tekst_ala :: int,
+                    teoll_elint_ala :: int,
+                    teoll_tekst_ala :: int,
                     teoll_puu_ala :: int,
                     teoll_paper_ala :: int,
                     teoll_miner_ala :: int,
@@ -260,7 +270,7 @@ BEGIN
         g.geom::geometry(MultiPolygon, 3067),
         g.xyind::varchar(13),
         g.mun::int,
-        g.zone::int,
+        g.zone::bigint,
         NULL::date as year,
         0::int floorspace,
         COALESCE(g.pop, 0)::smallint pop,
@@ -272,7 +282,8 @@ BEGIN
         0::real sahko_kotitaloudet_tco2,
         0::real sahko_palv_tco2,
         0::real sahko_tv_tco2,
-        0::real liikenne_hlo_tco2,
+        0::real liikenne_as_tco2,
+        0::real liikenne_tp_tco2,
         0::real liikenne_tv_tco2,
         0::real liikenne_palv_tco2,
         0::real rak_korjaussaneeraus_tco2,
@@ -293,6 +304,7 @@ BEGIN
         AND targetYear IS NOT NULL THEN
         initialYear := calculationYear;
         calculationYear := baseYear;
+        calculationYears[1] := baseYear;
     END IF;
 
     ALTER TABLE grid2 ADD COLUMN IF NOT EXISTS mun int;
@@ -312,32 +324,32 @@ BEGIN
         FROM
             (SELECT DISTINCT ON (g2.xyind) g2.xyind,
             /* Käyttöveden lämmitys | Heating of water */
-            SUM((SELECT CO2_PropertyWater(g2.mun, calculationYear, calculationScenario, erpien_ala, 'erpien', g2.rakv, method, g2.energiam)) +
-                (SELECT CO2_PropertyWater(g2.mun, calculationYear, calculationScenario, rivita_ala, 'rivita', g2.rakv, method, g2.energiam)) +
-                (SELECT CO2_PropertyWater(g2.mun, calculationYear, calculationScenario, askert_ala, 'askert', g2.rakv, method, g2.energiam)) +
-                (SELECT CO2_PropertyWater(g2.mun, calculationYear, calculationScenario, liike_ala, 'liike', g2.rakv, method, g2.energiam)) +
-                (SELECT CO2_PropertyWater(g2.mun, calculationYear, calculationScenario, tsto_ala, 'tsto', g2.rakv, method, g2.energiam)) +
-                (SELECT CO2_PropertyWater(g2.mun, calculationYear, calculationScenario, liiken_ala, 'liiken', g2.rakv, method, g2.energiam)) +
-                (SELECT CO2_PropertyWater(g2.mun, calculationYear, calculationScenario, hoito_ala, 'hoito', g2.rakv, method, g2.energiam)) +
-                (SELECT CO2_PropertyWater(g2.mun, calculationYear, calculationScenario, kokoon_ala, 'kokoon', g2.rakv, method, g2.energiam)) +
-                (SELECT CO2_PropertyWater(g2.mun, calculationYear, calculationScenario, opetus_ala, 'opetus', g2.rakv, method, g2.energiam)) +
-                (SELECT CO2_PropertyWater(g2.mun, calculationYear, calculationScenario, teoll_ala, 'teoll', g2.rakv, method, g2.energiam)) +
-                (SELECT CO2_PropertyWater(g2.mun, calculationYear, calculationScenario, varast_ala, 'varast', g2.rakv, method, g2.energiam)) +
-                (SELECT CO2_PropertyWater(g2.mun, calculationYear, calculationScenario, muut_ala, 'muut', g2.rakv, method, g2.energiam)))
+            SUM((SELECT CO2_PropertyWater(g2.mun, calculationYears, calculationScenario, erpien_ala, 'erpien', g2.rakv, method, g2.energiam)) +
+                (SELECT CO2_PropertyWater(g2.mun, calculationYears, calculationScenario, rivita_ala, 'rivita', g2.rakv, method, g2.energiam)) +
+                (SELECT CO2_PropertyWater(g2.mun, calculationYears, calculationScenario, askert_ala, 'askert', g2.rakv, method, g2.energiam)) +
+                (SELECT CO2_PropertyWater(g2.mun, calculationYears, calculationScenario, liike_ala, 'liike', g2.rakv, method, g2.energiam)) +
+                (SELECT CO2_PropertyWater(g2.mun, calculationYears, calculationScenario, tsto_ala, 'tsto', g2.rakv, method, g2.energiam)) +
+                (SELECT CO2_PropertyWater(g2.mun, calculationYears, calculationScenario, liiken_ala, 'liiken', g2.rakv, method, g2.energiam)) +
+                (SELECT CO2_PropertyWater(g2.mun, calculationYears, calculationScenario, hoito_ala, 'hoito', g2.rakv, method, g2.energiam)) +
+                (SELECT CO2_PropertyWater(g2.mun, calculationYears, calculationScenario, kokoon_ala, 'kokoon', g2.rakv, method, g2.energiam)) +
+                (SELECT CO2_PropertyWater(g2.mun, calculationYears, calculationScenario, opetus_ala, 'opetus', g2.rakv, method, g2.energiam)) +
+                (SELECT CO2_PropertyWater(g2.mun, calculationYears, calculationScenario, teoll_ala, 'teoll', g2.rakv, method, g2.energiam)) +
+                (SELECT CO2_PropertyWater(g2.mun, calculationYears, calculationScenario, varast_ala, 'varast', g2.rakv, method, g2.energiam)) +
+                (SELECT CO2_PropertyWater(g2.mun, calculationYears, calculationScenario, muut_ala, 'muut', g2.rakv, method, g2.energiam)))
             AS property_water_gco2,
             /* Rakennusten lämmitys | Heating of buildings */
-            SUM((SELECT CO2_PropertyHeat(g2.mun, calculationYear, calculationScenario, erpien_ala, 'erpien', g2.rakv, method, g2.energiam)) +
-                (SELECT CO2_PropertyHeat(g2.mun, calculationYear, calculationScenario, rivita_ala, 'rivita', g2.rakv, method, g2.energiam)) +
-                (SELECT CO2_PropertyHeat(g2.mun, calculationYear, calculationScenario, askert_ala, 'askert', g2.rakv, method, g2.energiam)) +
-                (SELECT CO2_PropertyHeat(g2.mun, calculationYear, calculationScenario, liike_ala, 'liike', g2.rakv, method, g2.energiam)) +
-                (SELECT CO2_PropertyHeat(g2.mun, calculationYear, calculationScenario, tsto_ala, 'tsto', g2.rakv, method, g2.energiam)) +
-                (SELECT CO2_PropertyHeat(g2.mun, calculationYear, calculationScenario, liiken_ala, 'liiken', g2.rakv, method, g2.energiam)) +
-                (SELECT CO2_PropertyHeat(g2.mun, calculationYear, calculationScenario, hoito_ala, 'hoito', g2.rakv, method, g2.energiam)) +
-                (SELECT CO2_PropertyHeat(g2.mun, calculationYear, calculationScenario, kokoon_ala, 'kokoon', g2.rakv, method, g2.energiam)) +
-                (SELECT CO2_PropertyHeat(g2.mun, calculationYear, calculationScenario, opetus_ala, 'opetus', g2.rakv, method, g2.energiam)) +
-                (SELECT CO2_PropertyHeat(g2.mun, calculationYear, calculationScenario, teoll_ala, 'teoll', g2.rakv, method, g2.energiam)) +
-                (SELECT CO2_PropertyHeat(g2.mun, calculationYear, calculationScenario, varast_ala, 'varast', g2.rakv, method, g2.energiam)) +
-                (SELECT CO2_PropertyHeat(g2.mun, calculationYear, calculationScenario, muut_ala, 'muut', g2.rakv, method, g2.energiam)))
+            SUM((SELECT CO2_PropertyHeat(g2.mun, calculationYears, calculationScenario, erpien_ala, 'erpien', g2.rakv, method, g2.energiam)) +
+                (SELECT CO2_PropertyHeat(g2.mun, calculationYears, calculationScenario, rivita_ala, 'rivita', g2.rakv, method, g2.energiam)) +
+                (SELECT CO2_PropertyHeat(g2.mun, calculationYears, calculationScenario, askert_ala, 'askert', g2.rakv, method, g2.energiam)) +
+                (SELECT CO2_PropertyHeat(g2.mun, calculationYears, calculationScenario, liike_ala, 'liike', g2.rakv, method, g2.energiam)) +
+                (SELECT CO2_PropertyHeat(g2.mun, calculationYears, calculationScenario, tsto_ala, 'tsto', g2.rakv, method, g2.energiam)) +
+                (SELECT CO2_PropertyHeat(g2.mun, calculationYears, calculationScenario, liiken_ala, 'liiken', g2.rakv, method, g2.energiam)) +
+                (SELECT CO2_PropertyHeat(g2.mun, calculationYears, calculationScenario, hoito_ala, 'hoito', g2.rakv, method, g2.energiam)) +
+                (SELECT CO2_PropertyHeat(g2.mun, calculationYears, calculationScenario, kokoon_ala, 'kokoon', g2.rakv, method, g2.energiam)) +
+                (SELECT CO2_PropertyHeat(g2.mun, calculationYears, calculationScenario, opetus_ala, 'opetus', g2.rakv, method, g2.energiam)) +
+                (SELECT CO2_PropertyHeat(g2.mun, calculationYears, calculationScenario, teoll_ala, 'teoll', g2.rakv, method, g2.energiam)) +
+                (SELECT CO2_PropertyHeat(g2.mun, calculationYears, calculationScenario, varast_ala, 'varast', g2.rakv, method, g2.energiam)) +
+                (SELECT CO2_PropertyHeat(g2.mun, calculationYears, calculationScenario, muut_ala, 'muut', g2.rakv, method, g2.energiam)))
             AS property_heat_gco2
             FROM grid2 g2
                 GROUP BY g2.xyind) buildings
@@ -351,32 +363,32 @@ BEGIN
         FROM
             (SELECT DISTINCT ON (g2.xyind) g2.xyind,
             /* Käyttöveden lämmitys | Heating of water */
-            SUM((SELECT CO2_PropertyWater(g2.mun, calculationYear, calculationScenario, erpien_ala, 'erpien', g2.rakv, method)) +
-                (SELECT CO2_PropertyWater(g2.mun, calculationYear, calculationScenario, rivita_ala, 'rivita', g2.rakv, method)) +
-                (SELECT CO2_PropertyWater(g2.mun, calculationYear, calculationScenario, askert_ala, 'askert', g2.rakv, method)) +
-                (SELECT CO2_PropertyWater(g2.mun, calculationYear, calculationScenario, liike_ala, 'liike', g2.rakv, method)) +
-                (SELECT CO2_PropertyWater(g2.mun, calculationYear, calculationScenario, tsto_ala, 'tsto', g2.rakv, method)) +
-                (SELECT CO2_PropertyWater(g2.mun, calculationYear, calculationScenario, liiken_ala, 'liiken', g2.rakv, method)) +
-                (SELECT CO2_PropertyWater(g2.mun, calculationYear, calculationScenario, hoito_ala, 'hoito', g2.rakv, method)) +
-                (SELECT CO2_PropertyWater(g2.mun, calculationYear, calculationScenario, kokoon_ala, 'kokoon', g2.rakv, method)) +
-                (SELECT CO2_PropertyWater(g2.mun, calculationYear, calculationScenario, opetus_ala, 'opetus', g2.rakv, method)) +
-                (SELECT CO2_PropertyWater(g2.mun, calculationYear, calculationScenario, teoll_ala, 'teoll', g2.rakv, method)) +
-                (SELECT CO2_PropertyWater(g2.mun, calculationYear, calculationScenario, varast_ala, 'varast', g2.rakv, method)) +
-                (SELECT CO2_PropertyWater(g2.mun, calculationYear, calculationScenario, muut_ala, 'muut', g2.rakv, method)))
+            SUM((SELECT CO2_PropertyWater(g2.mun, calculationYears, calculationScenario, erpien_ala, 'erpien', g2.rakv, method)) +
+                (SELECT CO2_PropertyWater(g2.mun, calculationYears, calculationScenario, rivita_ala, 'rivita', g2.rakv, method)) +
+                (SELECT CO2_PropertyWater(g2.mun, calculationYears, calculationScenario, askert_ala, 'askert', g2.rakv, method)) +
+                (SELECT CO2_PropertyWater(g2.mun, calculationYears, calculationScenario, liike_ala, 'liike', g2.rakv, method)) +
+                (SELECT CO2_PropertyWater(g2.mun, calculationYears, calculationScenario, tsto_ala, 'tsto', g2.rakv, method)) +
+                (SELECT CO2_PropertyWater(g2.mun, calculationYears, calculationScenario, liiken_ala, 'liiken', g2.rakv, method)) +
+                (SELECT CO2_PropertyWater(g2.mun, calculationYears, calculationScenario, hoito_ala, 'hoito', g2.rakv, method)) +
+                (SELECT CO2_PropertyWater(g2.mun, calculationYears, calculationScenario, kokoon_ala, 'kokoon', g2.rakv, method)) +
+                (SELECT CO2_PropertyWater(g2.mun, calculationYears, calculationScenario, opetus_ala, 'opetus', g2.rakv, method)) +
+                (SELECT CO2_PropertyWater(g2.mun, calculationYears, calculationScenario, teoll_ala, 'teoll', g2.rakv, method)) +
+                (SELECT CO2_PropertyWater(g2.mun, calculationYears, calculationScenario, varast_ala, 'varast', g2.rakv, method)) +
+                (SELECT CO2_PropertyWater(g2.mun, calculationYears, calculationScenario, muut_ala, 'muut', g2.rakv, method)))
             AS property_water_gco2,
             /* Rakennusten lämmitys | Heating of buildings */
-            SUM((SELECT CO2_PropertyHeat(g2.mun, calculationYear, calculationScenario, erpien_ala, 'erpien', g2.rakv, method)) +
-                (SELECT CO2_PropertyHeat(g2.mun, calculationYear, calculationScenario, rivita_ala, 'rivita', g2.rakv, method)) +
-                (SELECT CO2_PropertyHeat(g2.mun, calculationYear, calculationScenario, askert_ala, 'askert', g2.rakv, method)) +
-                (SELECT CO2_PropertyHeat(g2.mun, calculationYear, calculationScenario, liike_ala, 'liike', g2.rakv, method)) +
-                (SELECT CO2_PropertyHeat(g2.mun, calculationYear, calculationScenario, tsto_ala, 'tsto', g2.rakv, method)) +
-                (SELECT CO2_PropertyHeat(g2.mun, calculationYear, calculationScenario, liiken_ala, 'liiken', g2.rakv, method)) +
-                (SELECT CO2_PropertyHeat(g2.mun, calculationYear, calculationScenario, hoito_ala, 'hoito', g2.rakv, method)) +
-                (SELECT CO2_PropertyHeat(g2.mun, calculationYear, calculationScenario, kokoon_ala, 'kokoon', g2.rakv, method)) +
-                (SELECT CO2_PropertyHeat(g2.mun, calculationYear, calculationScenario, opetus_ala, 'opetus', g2.rakv, method)) +
-                (SELECT CO2_PropertyHeat(g2.mun, calculationYear, calculationScenario, teoll_ala, 'teoll', g2.rakv, method)) +
-                (SELECT CO2_PropertyHeat(g2.mun, calculationYear, calculationScenario, varast_ala, 'varast', g2.rakv, method)) +
-                (SELECT CO2_PropertyHeat(g2.mun, calculationYear, calculationScenario, muut_ala, 'muut', g2.rakv, method)))
+            SUM((SELECT CO2_PropertyHeat(g2.mun, calculationYears, calculationScenario, erpien_ala, 'erpien', g2.rakv, method)) +
+                (SELECT CO2_PropertyHeat(g2.mun, calculationYears, calculationScenario, rivita_ala, 'rivita', g2.rakv, method)) +
+                (SELECT CO2_PropertyHeat(g2.mun, calculationYears, calculationScenario, askert_ala, 'askert', g2.rakv, method)) +
+                (SELECT CO2_PropertyHeat(g2.mun, calculationYears, calculationScenario, liike_ala, 'liike', g2.rakv, method)) +
+                (SELECT CO2_PropertyHeat(g2.mun, calculationYears, calculationScenario, tsto_ala, 'tsto', g2.rakv, method)) +
+                (SELECT CO2_PropertyHeat(g2.mun, calculationYears, calculationScenario, liiken_ala, 'liiken', g2.rakv, method)) +
+                (SELECT CO2_PropertyHeat(g2.mun, calculationYears, calculationScenario, hoito_ala, 'hoito', g2.rakv, method)) +
+                (SELECT CO2_PropertyHeat(g2.mun, calculationYears, calculationScenario, kokoon_ala, 'kokoon', g2.rakv, method)) +
+                (SELECT CO2_PropertyHeat(g2.mun, calculationYears, calculationScenario, opetus_ala, 'opetus', g2.rakv, method)) +
+                (SELECT CO2_PropertyHeat(g2.mun, calculationYears, calculationScenario, teoll_ala, 'teoll', g2.rakv, method)) +
+                (SELECT CO2_PropertyHeat(g2.mun, calculationYears, calculationScenario, varast_ala, 'varast', g2.rakv, method)) +
+                (SELECT CO2_PropertyHeat(g2.mun, calculationYears, calculationScenario, muut_ala, 'muut', g2.rakv, method)))
             AS property_heat_gco2
             FROM grid2 g2
             GROUP BY g2.xyind) buildings
@@ -391,51 +403,51 @@ BEGIN
     FROM
         (SELECT DISTINCT ON (g2.xyind) g2.xyind,
         /* Rakennusten jäähdytys | Cooling of buildings */
-        SUM((SELECT CO2_PropertyCooling(g2.mun, calculationYear, calculationScenario, erpien_ala, 'erpien', g2.rakv)) +
-            (SELECT CO2_PropertyCooling(g2.mun, calculationYear, calculationScenario, rivita_ala, 'rivita', g2.rakv)) +
-            (SELECT CO2_PropertyCooling(g2.mun, calculationYear, calculationScenario, askert_ala, 'askert', g2.rakv)) +
-            (SELECT CO2_PropertyCooling(g2.mun, calculationYear, calculationScenario, liike_ala, 'liike', g2.rakv)) +
-            (SELECT CO2_PropertyCooling(g2.mun, calculationYear, calculationScenario, tsto_ala, 'tsto', g2.rakv)) +
-            (SELECT CO2_PropertyCooling(g2.mun, calculationYear, calculationScenario, liiken_ala, 'liiken', g2.rakv)) +
-            (SELECT CO2_PropertyCooling(g2.mun, calculationYear, calculationScenario, hoito_ala, 'hoito', g2.rakv)) +
-            (SELECT CO2_PropertyCooling(g2.mun, calculationYear, calculationScenario, kokoon_ala, 'kokoon', g2.rakv)) +
-            (SELECT CO2_PropertyCooling(g2.mun, calculationYear, calculationScenario, opetus_ala, 'opetus', g2.rakv)) +
-            (SELECT CO2_PropertyCooling(g2.mun, calculationYear, calculationScenario, teoll_ala, 'teoll', g2.rakv)) +
-            (SELECT CO2_PropertyCooling(g2.mun, calculationYear, calculationScenario, varast_ala, 'varast', g2.rakv)) +
-            (SELECT CO2_PropertyCooling(g2.mun, calculationYear, calculationScenario, muut_ala, 'muut', g2.rakv)))
+        SUM((SELECT CO2_PropertyCooling(g2.mun, calculationYears, calculationScenario, erpien_ala, 'erpien', g2.rakv)) +
+            (SELECT CO2_PropertyCooling(g2.mun, calculationYears, calculationScenario, rivita_ala, 'rivita', g2.rakv)) +
+            (SELECT CO2_PropertyCooling(g2.mun, calculationYears, calculationScenario, askert_ala, 'askert', g2.rakv)) +
+            (SELECT CO2_PropertyCooling(g2.mun, calculationYears, calculationScenario, liike_ala, 'liike', g2.rakv)) +
+            (SELECT CO2_PropertyCooling(g2.mun, calculationYears, calculationScenario, tsto_ala, 'tsto', g2.rakv)) +
+            (SELECT CO2_PropertyCooling(g2.mun, calculationYears, calculationScenario, liiken_ala, 'liiken', g2.rakv)) +
+            (SELECT CO2_PropertyCooling(g2.mun, calculationYears, calculationScenario, hoito_ala, 'hoito', g2.rakv)) +
+            (SELECT CO2_PropertyCooling(g2.mun, calculationYears, calculationScenario, kokoon_ala, 'kokoon', g2.rakv)) +
+            (SELECT CO2_PropertyCooling(g2.mun, calculationYears, calculationScenario, opetus_ala, 'opetus', g2.rakv)) +
+            (SELECT CO2_PropertyCooling(g2.mun, calculationYears, calculationScenario, teoll_ala, 'teoll', g2.rakv)) +
+            (SELECT CO2_PropertyCooling(g2.mun, calculationYears, calculationScenario, varast_ala, 'varast', g2.rakv)) +
+            (SELECT CO2_PropertyCooling(g2.mun, calculationYears, calculationScenario, muut_ala, 'muut', g2.rakv)))
         AS property_cooling_gco2,
         /* Kiinteistösähkö | Electricity consumption of property technology */
-        SUM((SELECT CO2_ElectricityProperty(calculationYear, calculationScenario, erpien_ala, 'erpien', g2.rakv)) +
-            (SELECT CO2_ElectricityProperty(calculationYear, calculationScenario, rivita_ala, 'rivita', g2.rakv)) +
-            (SELECT CO2_ElectricityProperty(calculationYear, calculationScenario, askert_ala, 'askert', g2.rakv)) +
-            (SELECT CO2_ElectricityProperty(calculationYear, calculationScenario, liike_ala,  'liike', g2.rakv)) +
-            (SELECT CO2_ElectricityProperty(calculationYear, calculationScenario, tsto_ala, 'tsto', g2.rakv)) +
-            (SELECT CO2_ElectricityProperty(calculationYear, calculationScenario, liiken_ala, 'liiken', g2.rakv)) +
-            (SELECT CO2_ElectricityProperty(calculationYear, calculationScenario, hoito_ala, 'hoito', g2.rakv)) +
-            (SELECT CO2_ElectricityProperty(calculationYear, calculationScenario, kokoon_ala, 'kokoon', g2.rakv)) +
-            (SELECT CO2_ElectricityProperty(calculationYear, calculationScenario, opetus_ala, 'opetus', g2.rakv)) +
-            (SELECT CO2_ElectricityProperty(calculationYear, calculationScenario, teoll_ala, 'teoll', g2.rakv)) +
-            (SELECT CO2_ElectricityProperty(calculationYear, calculationScenario, varast_ala, 'varast', g2.rakv)) +
-            (SELECT CO2_ElectricityProperty(calculationYear, calculationScenario, muut_ala, 'muut', g2.rakv)))
+        SUM((SELECT CO2_ElectricityProperty(calculationYears, calculationScenario, erpien_ala, 'erpien', g2.rakv)) +
+            (SELECT CO2_ElectricityProperty(calculationYears, calculationScenario, rivita_ala, 'rivita', g2.rakv)) +
+            (SELECT CO2_ElectricityProperty(calculationYears, calculationScenario, askert_ala, 'askert', g2.rakv)) +
+            (SELECT CO2_ElectricityProperty(calculationYears, calculationScenario, liike_ala,  'liike', g2.rakv)) +
+            (SELECT CO2_ElectricityProperty(calculationYears, calculationScenario, tsto_ala, 'tsto', g2.rakv)) +
+            (SELECT CO2_ElectricityProperty(calculationYears, calculationScenario, liiken_ala, 'liiken', g2.rakv)) +
+            (SELECT CO2_ElectricityProperty(calculationYears, calculationScenario, hoito_ala, 'hoito', g2.rakv)) +
+            (SELECT CO2_ElectricityProperty(calculationYears, calculationScenario, kokoon_ala, 'kokoon', g2.rakv)) +
+            (SELECT CO2_ElectricityProperty(calculationYears, calculationScenario, opetus_ala, 'opetus', g2.rakv)) +
+            (SELECT CO2_ElectricityProperty(calculationYears, calculationScenario, teoll_ala, 'teoll', g2.rakv)) +
+            (SELECT CO2_ElectricityProperty(calculationYears, calculationScenario, varast_ala, 'varast', g2.rakv)) +
+            (SELECT CO2_ElectricityProperty(calculationYears, calculationScenario, muut_ala, 'muut', g2.rakv)))
         AS sahko_kiinteistot_co2,
         /* Kotitalouksien sähkönkulutus | Energy consumption of households */
-        SUM((SELECT CO2_ElectricityHousehold(calculationYear, calculationScenario, erpien_ala, 'erpien')) +
-            (SELECT CO2_ElectricityHousehold(calculationYear, calculationScenario, rivita_ala, 'rivita')) +
-            (SELECT CO2_ElectricityHousehold(calculationYear, calculationScenario, askert_ala, 'askert')))
+        SUM((SELECT CO2_ElectricityHousehold(calculationYears, calculationScenario, erpien_ala, 'erpien')) +
+            (SELECT CO2_ElectricityHousehold(calculationYears, calculationScenario, rivita_ala, 'rivita')) +
+            (SELECT CO2_ElectricityHousehold(calculationYears, calculationScenario, askert_ala, 'askert')))
         AS sahko_kotitaloudet_co2,
         /* Korjausrakentaminen ja saneeraus | Renovations and large-scale overhauls of buildings */
-        SUM((SELECT CO2_BuildRenovate(erpien_ala, calculationYear, 'erpien', g2.rakv, calculationScenario)) +
-            (SELECT CO2_BuildRenovate(rivita_ala, calculationYear, 'rivita', g2.rakv, calculationScenario)) +
-            (SELECT CO2_BuildRenovate(askert_ala, calculationYear, 'askert', g2.rakv, calculationScenario)) +
-            (SELECT CO2_BuildRenovate(liike_ala, calculationYear, 'liike', g2.rakv, calculationScenario)) +
-            (SELECT CO2_BuildRenovate(tsto_ala, calculationYear, 'tsto', g2.rakv, calculationScenario)) +
-            (SELECT CO2_BuildRenovate(liiken_ala, calculationYear, 'liiken', g2.rakv, calculationScenario)) +
-            (SELECT CO2_BuildRenovate(hoito_ala, calculationYear, 'hoito', g2.rakv, calculationScenario)) +
-            (SELECT CO2_BuildRenovate(kokoon_ala, calculationYear, 'kokoon', g2.rakv, calculationScenario)) +
-            (SELECT CO2_BuildRenovate(opetus_ala, calculationYear, 'opetus', g2.rakv, calculationScenario)) +
-            (SELECT CO2_BuildRenovate(teoll_ala, calculationYear, 'teoll', g2.rakv, calculationScenario)) +
-            (SELECT CO2_BuildRenovate(varast_ala, calculationYear, 'varast', g2.rakv, calculationScenario)) +
-            (SELECT CO2_BuildRenovate(muut_ala, calculationYear, 'muut', g2.rakv, calculationScenario)))
+        SUM((SELECT CO2_BuildRenovate(erpien_ala, calculationYears, 'erpien', g2.rakv, calculationScenario)) +
+            (SELECT CO2_BuildRenovate(rivita_ala, calculationYears, 'rivita', g2.rakv, calculationScenario)) +
+            (SELECT CO2_BuildRenovate(askert_ala, calculationYears, 'askert', g2.rakv, calculationScenario)) +
+            (SELECT CO2_BuildRenovate(liike_ala, calculationYears, 'liike', g2.rakv, calculationScenario)) +
+            (SELECT CO2_BuildRenovate(tsto_ala, calculationYears, 'tsto', g2.rakv, calculationScenario)) +
+            (SELECT CO2_BuildRenovate(liiken_ala, calculationYears, 'liiken', g2.rakv, calculationScenario)) +
+            (SELECT CO2_BuildRenovate(hoito_ala, calculationYears, 'hoito', g2.rakv, calculationScenario)) +
+            (SELECT CO2_BuildRenovate(kokoon_ala, calculationYears, 'kokoon', g2.rakv, calculationScenario)) +
+            (SELECT CO2_BuildRenovate(opetus_ala, calculationYears, 'opetus', g2.rakv, calculationScenario)) +
+            (SELECT CO2_BuildRenovate(teoll_ala, calculationYears, 'teoll', g2.rakv, calculationScenario)) +
+            (SELECT CO2_BuildRenovate(varast_ala, calculationYears, 'varast', g2.rakv, calculationScenario)) +
+            (SELECT CO2_BuildRenovate(muut_ala, calculationYears, 'muut', g2.rakv, calculationScenario)))
         AS rak_korjaussaneeraus_co2
             FROM grid2 g2
                 GROUP BY g2.xyind
@@ -452,31 +464,31 @@ BEGIN
         FROM
             (SELECT DISTINCT ON (g2.xyind) g2.xyind,
             /* Palveluiden sähkönkulutus | Electricity consumption of services */
-            SUM((SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, liike_ala, 'liike')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, tsto_ala, 'tsto')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, liiken_ala, 'liiken')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, hoito_ala, 'hoito')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, kokoon_ala, 'kokoon')) +	
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, opetus_ala, 'opetus')))
+            SUM((SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, liike_ala, 'liike')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, tsto_ala, 'tsto')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, liiken_ala, 'liiken')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, hoito_ala, 'hoito')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, kokoon_ala, 'kokoon')) +	
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, opetus_ala, 'opetus')))
             AS sahko_palv_co2,
             /* Teollisuus ja varastot, sähkönkulutus | Electricity consumption of industry and warehouses */
-            SUM((SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, teoll_ala, 'teoll')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, varast_ala, 'varast')))
+            SUM((SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, teoll_ala, 'teoll')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, varast_ala, 'varast')))
             AS sahko_tv_co2,
             /* Teollisuus- ja varastoliikenne | Industry and logistics traffic */
-            SUM((SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, teoll_ala, 'teoll')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, varast_ala, 'varast')))
+            SUM((SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, teoll_ala, 'teoll')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, varast_ala, 'varast')))
             AS liikenne_tv_co2,
             /* Palveluliikenne | Service traffic */
-            SUM((SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, myymal_ala, 'myymal')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, asla_ala, 'asla')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, ravint_ala, 'ravint')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, tsto_ala, 'tsto')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, liiken_ala, 'liiken')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, hoito_ala, 'hoito')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, kokoon_ala, 'kokoon')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, opetus_ala, 'opetus')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, muut_ala, 'muut')))
+            SUM((SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, myymal_ala, 'myymal')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, asla_ala, 'asla')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, ravint_ala, 'ravint')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, tsto_ala, 'tsto')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, liiken_ala, 'liiken')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, hoito_ala, 'hoito')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, kokoon_ala, 'kokoon')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, opetus_ala, 'opetus')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, muut_ala, 'muut')))
             AS liikenne_palv_co2
             FROM grid2 g2
             GROUP BY g2.xyind) buildings
@@ -492,67 +504,67 @@ BEGIN
         FROM
             (SELECT DISTINCT ON (g2.xyind) g2.xyind,
             /* Palveluiden sähkönkulutus | Electricity consumption of services */
-            SUM((SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, myymal_hyper_ala, 'myymal_hyper')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, myymal_super_ala, 'myymal_super')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, myymal_pien_ala, 'myymal_pien')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, myymal_muu_ala, 'myymal_muu')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, majoit_ala, 'majoit')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, asla_ala, 'asla')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, ravint_ala, 'ravint')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, tsto_ala, 'tsto')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, liiken_ala, 'liiken')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, hoito_ala, 'hoito')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, kokoon_ala, 'kokoon')) +	
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, opetus_ala, 'opetus')))
+            SUM((SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, myymal_hyper_ala, 'myymal_hyper')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, myymal_super_ala, 'myymal_super')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, myymal_pien_ala, 'myymal_pien')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, myymal_muu_ala, 'myymal_muu')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, majoit_ala, 'majoit')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, asla_ala, 'asla')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, ravint_ala, 'ravint')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, tsto_ala, 'tsto')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, liiken_ala, 'liiken')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, hoito_ala, 'hoito')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, kokoon_ala, 'kokoon')) +	
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, opetus_ala, 'opetus')))
             AS sahko_palv_co2,
             /* Teollisuus ja varastot, sähkönkulutus | Electricity consumption of industry and warehouses */
-            SUM((SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, teoll_kaivos_ala, 'teoll_kaivos')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, teoll_elint_ala, 'teoll_elint')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, teoll_tekst_ala, 'teoll_tekst')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, teoll_puu_ala, 'teoll_puu')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, teoll_paper_ala, 'teoll_paper')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, teoll_kemia_ala, 'teoll_kemia')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, teoll_miner_ala, 'teoll_miner')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, teoll_mjalos_ala, 'teoll_mjalos')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, teoll_metal_ala, 'teoll_metal')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, teoll_kone_ala, 'teoll_kone')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, teoll_muu_ala, 'teoll_muu')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, teoll_energ_ala, 'teoll_energ')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, teoll_vesi_ala, 'teoll_vesi')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, teoll_yhdysk_ala, 'teoll_yhdysk')) +
-                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYear, calculationScenario, varast_ala, 'varast')))
+            SUM((SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, teoll_kaivos_ala, 'teoll_kaivos')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, teoll_elint_ala, 'teoll_elint')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, teoll_tekst_ala, 'teoll_tekst')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, teoll_puu_ala, 'teoll_puu')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, teoll_paper_ala, 'teoll_paper')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, teoll_kemia_ala, 'teoll_kemia')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, teoll_miner_ala, 'teoll_miner')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, teoll_mjalos_ala, 'teoll_mjalos')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, teoll_metal_ala, 'teoll_metal')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, teoll_kone_ala, 'teoll_kone')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, teoll_muu_ala, 'teoll_muu')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, teoll_energ_ala, 'teoll_energ')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, teoll_vesi_ala, 'teoll_vesi')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, teoll_yhdysk_ala, 'teoll_yhdysk')) +
+                (SELECT CO2_ElectricityIWHS(g2.mun, calculationYears, calculationScenario, varast_ala, 'varast')))
             AS sahko_tv_co2,
             /* Teollisuus- ja varastoliikenne | Industry and logistics traffic */
-            SUM((SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, teoll_kaivos_ala, 'teoll_kaivos')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, teoll_elint_ala, 'teoll_elint')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, teoll_tekst_ala, 'teoll_tekst')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, teoll_puu_ala, 'teoll_puu')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, teoll_paper_ala, 'teoll_paper')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, teoll_kemia_ala, 'teoll_kemia')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, teoll_miner_ala, 'teoll_miner')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, teoll_mjalos_ala, 'teoll_mjalos')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, teoll_metal_ala, 'teoll_metal')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, teoll_kone_ala, 'teoll_kone')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, teoll_muu_ala, 'teoll_muu')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, teoll_energ_ala, 'teoll_energ')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, teoll_vesi_ala, 'teoll_vesi')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, teoll_yhdysk_ala, 'teoll_yhdysk')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, varast_ala, 'varast')))
+            SUM((SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, teoll_kaivos_ala, 'teoll_kaivos')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, teoll_elint_ala, 'teoll_elint')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, teoll_tekst_ala, 'teoll_tekst')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, teoll_puu_ala, 'teoll_puu')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, teoll_paper_ala, 'teoll_paper')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, teoll_kemia_ala, 'teoll_kemia')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, teoll_miner_ala, 'teoll_miner')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, teoll_mjalos_ala, 'teoll_mjalos')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, teoll_metal_ala, 'teoll_metal')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, teoll_kone_ala, 'teoll_kone')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, teoll_muu_ala, 'teoll_muu')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, teoll_energ_ala, 'teoll_energ')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, teoll_vesi_ala, 'teoll_vesi')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, teoll_yhdysk_ala, 'teoll_yhdysk')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, varast_ala, 'varast')))
             AS liikenne_tv_co2,
             /* Palveluliikenne | Service traffic */
-            SUM((SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, myymal_hyper_ala, 'myymal_hyper')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, myymal_super_ala, 'myymal_super')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, myymal_pien_ala, 'myymal_pien')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, myymal_muu_ala, 'myymal_muu')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, majoit_ala, 'majoit')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, asla_ala, 'asla')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, ravint_ala, 'ravint')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, tsto_ala, 'tsto')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, liiken_ala, 'liiken')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, hoito_ala, 'hoito')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, kokoon_ala, 'kokoon')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, opetus_ala, 'opetus')) +
-                (SELECT CO2_TrafficIWHS(g2.mun, calculationYear, calculationScenario, muut_ala, 'muut')))
+            SUM((SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, myymal_hyper_ala, 'myymal_hyper')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, myymal_super_ala, 'myymal_super')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, myymal_pien_ala, 'myymal_pien')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, myymal_muu_ala, 'myymal_muu')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, majoit_ala, 'majoit')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, asla_ala, 'asla')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, ravint_ala, 'ravint')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, tsto_ala, 'tsto')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, liiken_ala, 'liiken')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, hoito_ala, 'hoito')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, kokoon_ala, 'kokoon')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, opetus_ala, 'opetus')) +
+                (SELECT CO2_TrafficIWHS(g2.mun, calculationYears, calculationScenario, muut_ala, 'muut')))
             AS liikenne_palv_co2
                 FROM grid2 g2
                 GROUP BY g2.xyind
@@ -565,18 +577,18 @@ BEGIN
             rak_uudis_tco2 = COALESCE(buildings.rak_uudis_co2 * grams_to_tons, 0)
         FROM
             (SELECT DISTINCT ON (grid2.xyind) grid2.xyind,
-            SUM((SELECT CO2_BuildConstruct(erpien_ala, calculationYear, 'erpien', calculationScenario)) +
-                (SELECT CO2_BuildConstruct(rivita_ala, calculationYear, 'rivita', calculationScenario)) +
-                (SELECT CO2_BuildConstruct(askert_ala, calculationYear, 'askert', calculationScenario)) +
-                (SELECT CO2_BuildConstruct(liike_ala, calculationYear, 'liike', calculationScenario)) +
-                (SELECT CO2_BuildConstruct(tsto_ala, calculationYear, 'tsto', calculationScenario)) +
-                (SELECT CO2_BuildConstruct(liiken_ala, calculationYear, 'liiken', calculationScenario)) +
-                (SELECT CO2_BuildConstruct(hoito_ala, calculationYear, 'hoito', calculationScenario)) +
-                (SELECT CO2_BuildConstruct(kokoon_ala, calculationYear, 'kokoon', calculationScenario)) +
-                (SELECT CO2_BuildConstruct(opetus_ala, calculationYear, 'opetus', calculationScenario)) +
-                (SELECT CO2_BuildConstruct(teoll_ala, calculationYear, 'teoll', calculationScenario)) +
-                (SELECT CO2_BuildConstruct(varast_ala, calculationYear, 'varast', calculationScenario)) +
-                (SELECT CO2_BuildConstruct(muut_ala, calculationYear, 'muut', calculationScenario))
+            SUM((SELECT CO2_BuildConstruct(erpien_ala, calculationYears, 'erpien', calculationScenario)) +
+                (SELECT CO2_BuildConstruct(rivita_ala, calculationYears, 'rivita', calculationScenario)) +
+                (SELECT CO2_BuildConstruct(askert_ala, calculationYears, 'askert', calculationScenario)) +
+                (SELECT CO2_BuildConstruct(liike_ala, calculationYears, 'liike', calculationScenario)) +
+                (SELECT CO2_BuildConstruct(tsto_ala, calculationYears, 'tsto', calculationScenario)) +
+                (SELECT CO2_BuildConstruct(liiken_ala, calculationYears, 'liiken', calculationScenario)) +
+                (SELECT CO2_BuildConstruct(hoito_ala, calculationYears, 'hoito', calculationScenario)) +
+                (SELECT CO2_BuildConstruct(kokoon_ala, calculationYears, 'kokoon', calculationScenario)) +
+                (SELECT CO2_BuildConstruct(opetus_ala, calculationYears, 'opetus', calculationScenario)) +
+                (SELECT CO2_BuildConstruct(teoll_ala, calculationYears, 'teoll', calculationScenario)) +
+                (SELECT CO2_BuildConstruct(varast_ala, calculationYears, 'varast', calculationScenario)) +
+                (SELECT CO2_BuildConstruct(muut_ala, calculationYears, 'muut', calculationScenario))
             ) AS rak_uudis_co2
                 FROM grid2  
                     WHERE grid2.rakv = calculationYear
@@ -588,18 +600,18 @@ BEGIN
         /* Calculating emissions for demolishing buildings */
         UPDATE results SET rak_purku_tco2 = COALESCE(poistot.rak_purku_co2 * grams_to_tons, 0)
             FROM (SELECT p.xyind,
-                SUM((SELECT CO2_BuildDemolish(p.erpien::real, calculationYear, 'erpien', calculationScenario)) +
-                    (SELECT CO2_BuildDemolish(p.rivita::real, calculationYear, 'rivita', calculationScenario)) +
-                    (SELECT CO2_BuildDemolish(p.askert::real, calculationYear, 'askert', calculationScenario)) +
-                    (SELECT CO2_BuildDemolish(p.liike::real, calculationYear, 'liike', calculationScenario)) +
-                    (SELECT CO2_BuildDemolish(p.tsto::real, calculationYear, 'tsto', calculationScenario)) +
-                    (SELECT CO2_BuildDemolish(p.liiken::real, calculationYear, 'liiken', calculationScenario)) +
-                    (SELECT CO2_BuildDemolish(p.hoito::real, calculationYear, 'hoito', calculationScenario)) +
-                    (SELECT CO2_BuildDemolish(p.kokoon::real, calculationYear, 'kokoon', calculationScenario)) +
-                    (SELECT CO2_BuildDemolish(p.opetus::real, calculationYear, 'opetus', calculationScenario)) +
-                    (SELECT CO2_BuildDemolish(p.teoll::real, calculationYear, 'teoll', calculationScenario)) +
-                    (SELECT CO2_BuildDemolish(p.varast::real, calculationYear, 'varast', calculationScenario)) +
-                    (SELECT CO2_BuildDemolish(p.muut::real, calculationYear, 'muut', calculationScenario))
+                SUM((SELECT CO2_BuildDemolish(p.erpien::real, calculationYears, 'erpien', calculationScenario)) +
+                    (SELECT CO2_BuildDemolish(p.rivita::real, calculationYears, 'rivita', calculationScenario)) +
+                    (SELECT CO2_BuildDemolish(p.askert::real, calculationYears, 'askert', calculationScenario)) +
+                    (SELECT CO2_BuildDemolish(p.liike::real, calculationYears, 'liike', calculationScenario)) +
+                    (SELECT CO2_BuildDemolish(p.tsto::real, calculationYears, 'tsto', calculationScenario)) +
+                    (SELECT CO2_BuildDemolish(p.liiken::real, calculationYears, 'liiken', calculationScenario)) +
+                    (SELECT CO2_BuildDemolish(p.hoito::real, calculationYears, 'hoito', calculationScenario)) +
+                    (SELECT CO2_BuildDemolish(p.kokoon::real, calculationYears, 'kokoon', calculationScenario)) +
+                    (SELECT CO2_BuildDemolish(p.opetus::real, calculationYears, 'opetus', calculationScenario)) +
+                    (SELECT CO2_BuildDemolish(p.teoll::real, calculationYears, 'teoll', calculationScenario)) +
+                    (SELECT CO2_BuildDemolish(p.varast::real, calculationYears, 'varast', calculationScenario)) +
+                    (SELECT CO2_BuildDemolish(p.muut::real, calculationYears, 'muut', calculationScenario))
                 ) AS rak_purku_co2
                     FROM poistuma_alat p
                         GROUP BY p.xyind
@@ -609,16 +621,22 @@ BEGIN
     END IF;
 
     UPDATE results SET
-        liikenne_hlo_tco2 = COALESCE(pop.liikenne_hlo_co2 * grams_to_tons, 0),
+        liikenne_as_tco2 = COALESCE(pop.liikenne_as_co2 * grams_to_tons, 0),
+        liikenne_tp_tco2 = COALESCE(pop.liikenne_tp_co2 * grams_to_tons, 0),
         sahko_kotitaloudet_tco2 = COALESCE(results.sahko_kotitaloudet_tco2 + NULLIF(pop.sahko_kotitaloudet_co2_as * grams_to_tons, 0), 0)
     FROM
         (SELECT g.xyind,
-            SUM((SELECT CO2_TrafficPersonal(g.mun, g.pop, g.employ, calculationYear, 'bussi', centdist, g.zone, calculationScenario)) +
-                (SELECT CO2_TrafficPersonal(g.mun, g.pop, g.employ, calculationYear, 'raide', centdist, g.zone, calculationScenario)) +
-                (SELECT CO2_TrafficPersonal(g.mun, g.pop, g.employ, calculationYear, 'hlauto', centdist, g.zone, calculationScenario)) +
-                (SELECT CO2_TrafficPersonal(g.mun, g.pop, g.employ, calculationYear, 'muu', centdist, g.zone, calculationScenario)))
-            AS liikenne_hlo_co2,
-            SUM((SELECT CO2_ElectricityHousehold(calculationYear, calculationScenario, g.pop, NULL)))
+            SUM((SELECT CO2_TrafficPersonal(g.mun, g.pop, calculationYears, 'bussi', centdist, g.zone, calculationScenario, 'pop', includeLongDistance, includeBusinessTravel)) +
+                (SELECT CO2_TrafficPersonal(g.mun, g.pop, calculationYears, 'raide', centdist, g.zone, calculationScenario, 'pop', includeLongDistance, includeBusinessTravel)) +
+                (SELECT CO2_TrafficPersonal(g.mun, g.pop, calculationYears, 'hlauto', centdist, g.zone, calculationScenario, 'pop', includeLongDistance, includeBusinessTravel)) +
+                (SELECT CO2_TrafficPersonal(g.mun, g.pop, calculationYears, 'muu', centdist, g.zone, calculationScenario, 'pop', includeLongDistance, includeBusinessTravel)))
+            AS liikenne_as_co2,
+            SUM((SELECT CO2_TrafficPersonal(g.mun, g.employ, calculationYears, 'bussi', centdist, g.zone, calculationScenario, 'employ', includeLongDistance, includeBusinessTravel)) +
+                (SELECT CO2_TrafficPersonal(g.mun, g.employ, calculationYears, 'raide', centdist, g.zone, calculationScenario, 'employ', includeLongDistance, includeBusinessTravel)) +
+                (SELECT CO2_TrafficPersonal(g.mun, g.employ, calculationYears, 'hlauto', centdist, g.zone, calculationScenario, 'employ', includeLongDistance, includeBusinessTravel)) +
+                (SELECT CO2_TrafficPersonal(g.mun, g.employ, calculationYears, 'muu', centdist, g.zone, calculationScenario, 'employ', includeLongDistance, includeBusinessTravel)))
+            AS liikenne_tp_co2,
+            SUM((SELECT CO2_ElectricityHousehold(calculationYears, calculationScenario, g.pop, NULL)))
             AS sahko_kotitaloudet_co2_as
             FROM grid g
                 WHERE (g.pop IS NOT NULL AND g.pop > 0)
@@ -627,7 +645,7 @@ BEGIN
     WHERE pop.xyind = results.xyind;
 
     IF initialScenario = 'static' AND targetYear IS NOT NULL
-        THEN calculationYear := initialYear;
+        THEN calculationYear := initialYear; calculationYears[1] := initialYear;
     END IF;
 
     UPDATE results r SET
@@ -637,7 +655,8 @@ BEGIN
             COALESCE(r.tilat_lammitys_tco2, 0) +
             COALESCE(r.tilat_jaahdytys_tco2, 0),
         sum_liikenne_tco2 =
-            COALESCE(r.liikenne_hlo_tco2, 0) +
+            COALESCE(r.liikenne_as_tco2, 0) +
+            COALESCE(r.liikenne_tp_tco2, 0) +
             COALESCE(r.liikenne_tv_tco2, 0) +
             COALESCE(r.liikenne_palv_tco2, 0), 
         sum_sahko_tco2 =

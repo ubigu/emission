@@ -3,7 +3,7 @@ CREATE OR REPLACE FUNCTION
 public.CO2_UpdateBuildingsRefined(
     rak_taulu regclass,
     ykr_taulu regclass,
-    calculationYear int, -- Vuosi, jonka perusteella päästöt lasketaan / viitearvot haetaan
+    calculationYears integer[], -- [year based on which emission values are calculated, min, max calculation years]
     baseYear int,
 	targetYear int,
     kehitysskenaario varchar -- PITKO:n mukainen kehitysskenaario
@@ -50,6 +50,7 @@ RETURNS TABLE (
     muut_ala int
 ) AS $$
 DECLARE
+  	calculationYear integer;
 	defaultdemolition boolean;
 	energiamuoto varchar;
 	laskentavuodet int[];
@@ -60,6 +61,11 @@ DECLARE
     teoll_koko real;
     varast_koko real;
 BEGIN
+
+    calculationYear := CASE WHEN calculationYears[1] < calculationYears[2] THEN calculationYears[2]
+    WHEN calculationYears[1] > calculationYears[3] THEN calculationYears[3]
+    ELSE calculationYears[1]
+    END;
 
 -- energiamuodot := ARRAY [kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, turve, hiili, maalampo, muu_lammitys];
 SELECT array(select generate_series(baseYear,targetYear)) INTO laskentavuodet;

@@ -11,7 +11,7 @@ Kiinteistösähkön kasvihuonekaasupäästöt sahko_kiinteisto_co2 [CO2-ekv/a] o
 DROP FUNCTION IF EXISTS CO2_ElectricityProperty;
 CREATE OR REPLACE FUNCTION
 public.CO2_ElectricityProperty(
-    calculationYear integer, -- Laskentavuosi | Calculation / reference year
+    calculationYears integer[], -- [year based on which emission values are calculated, min, max calculation years]
     calculationScenario varchar, -- PITKO-kehitysskenaario | PITKO development scenario
     floorSpace real, -- Rakennustyypin ikäluokkakohtainen kerrosala YKR-ruudussa laskentavuonna. Lukuarvo riippuu laskentavuodesta sekä rakennuksen tyypistä ja ikäluokasta [m2]
     buildingType varchar, -- Rakennustyyppi | Building type. esim. | e.g. 'erpien', 'rivita'
@@ -20,6 +20,7 @@ public.CO2_ElectricityProperty(
 RETURNS real AS
 $$
 DECLARE
+    calculationYear integer;
     result_gco2 real;
     sahko_kiinteisto_muutos real; -- Rakennustyypin ikäluokkakohtainen keskimääräisen kiinteistösähkön kulutuksen muutos tarkasteluvuonna [Ei yksikköä]. Lukuarvo riippuu laskentavuodesta ja rakennuksen ikäluokasta
 BEGIN
@@ -31,6 +32,11 @@ BEGIN
     /* Muussa tapauksessa jatka laskentaan */
     /* In other cases continue with the calculation */
     ELSE
+
+        calculationYear := CASE WHEN calculationYears[1] < calculationYears[2] THEN calculationYears[2]
+        WHEN calculationYears[1] > calculationYears[3] THEN calculationYears[3]
+        ELSE calculationYears[1]
+        END;
 
         EXECUTE FORMAT(
         'WITH electricity_property_khwm2 AS (

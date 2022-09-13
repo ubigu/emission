@@ -16,13 +16,14 @@ DROP FUNCTION IF EXISTS CO2_BuildRenovate;
 CREATE OR REPLACE FUNCTION
 public.CO2_BuildRenovate(
     floorSpace real, -- Rakennustyypin (erpien, rivita, askert, liike, tsto, liiken, hoito, kokoon, opetus, teoll, varast, muut) ikäluokkakohtainen kerrosala YKR-ruudussa laskentavuonna [m2]. Lukuarvo riippuu laskentavuodesta sekä rakennuksen tyypistä ja ikäluokasta.
-    calculationYear integer, -- Laskentavuosi | Calculation / reference year
+    calculationYears integer[], -- [year based on which emission values are calculated, min, max calculation years]
     buildingType varchar,  -- Rakennustyyppi | Building type. esim. | e.g. 'erpien', 'rivita'
     buildingYear integer, -- Rakennusvuosikymmen tai -vuosi (2017 alkaen) | Building decade or year (2017 onwards)
     calculationScenario varchar) -- PITKO-kehitysskenaario | PITKO development scenario
 RETURNS real AS
 $$
 DECLARE
+    calculationYear integer;
     rak_korj_energia_gco2m2 real; -- Tarkasteltavan rakennustyypin pienimuotoisten korjausten työmaatoimintojen ja kuljetusten kasvihuonekaasun ominaispäästöt yhtä kerrosneliötä kohti laskentavuonna [gCO2-ekv/m2]. Riippuu taustaskenaariosta, laskentavuodesta ja rakennustyypistä.
     rak_saneer_energia_gco2m2  real; -- Tarkasteltavan rakennustyypin laajamittaisen korjausrakentamisen työmaatoimintojen ja kuljetusten kasvihuonekaasun ominaispäästöt yhtä kerroskerrosneliötä kohti laskentavuonna [gCO2-ekv/m2]. Riippuu taustaskenaariosta, laskentavuodesta ja rakennustyypistä.
     rak_saneer_osuus real; -- Rakennustyypin ikäluokkakohtainen kerrosalaosuus, johon tehdään laskentavuoden aikana laajamittaisia korjausrakentamista [ei yksikköä]. Lukuarvo riippuu taustaskenaariosta, laskentavuodesta sekä rakennuksen ikäluokasta ja tyypistä.
@@ -30,6 +31,12 @@ BEGIN
     IF floorSpace <= 0 OR floorSpace IS NULL THEN
         RETURN 0;
     ELSE
+    
+        calculationYear := CASE WHEN calculationYears[1] < calculationYears[2] THEN calculationYears[2]
+            WHEN calculationYears[1] > calculationYears[3] THEN calculationYears[3]
+            ELSE calculationYears[1]
+        END;
+
         /* Korjausrakentamisen ominaispäästöt */
         EXECUTE 'SELECT ' || buildingType || ' FROM built.build_renovation_energy_gco2m2 WHERE scenario = $1 AND year = $2'
             INTO rak_korj_energia_gco2m2  USING calculationScenario, calculationYear;

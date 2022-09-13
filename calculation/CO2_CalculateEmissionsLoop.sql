@@ -3,20 +3,22 @@ DROP FUNCTION IF EXISTS CO2_CalculateEmissionsLoop;
 CREATE OR REPLACE FUNCTION
 public.CO2_CalculateEmissionsLoop(
     aoi regclass, -- Tutkimusalue | area of interest
+    includeLongDistance boolean,
+    includeBusinessTravel boolean,
     calculationScenario varchar, -- PITKO:n mukainen scenario
     method varchar, -- Päästöallokointimenetelmä, 'em' tai 'hjm'
     electricityType varchar, -- Sähkön päästölaji, 'hankinta' tai 'tuotanto'
     baseYear integer, -- Laskennan lähtövuosi
     targetYear integer, -- Laskennan tavoitevuosi
     plan_areas regclass default null, -- Taulu, jossa käyttötarkoitusalueet tai vastaavat
-    plan_centers regclass default null, -- Taulu, jossa kkreskusverkkotiedot 
-    plan_transit regclass default null -- Taulu, jossa intensiivinen joukkoliikennejärjestelmä 
+    plan_centers regclass default null, -- Taulu, jossa keskusverkkotiedot 
+    plan_transit regclass default null -- Taulu, jossa intensiivinen joukkoliikennejärjestelmä,
 )
 RETURNS TABLE(
     geom geometry(MultiPolygon, 3067),
     xyind varchar(13),
     mun int,
-    zone int,
+    zone bigint,
     year date,
     floorspace int,
     pop smallint,
@@ -28,7 +30,8 @@ RETURNS TABLE(
     sahko_kotitaloudet_tco2 real,
     sahko_palv_tco2 real,
     sahko_tv_tco2 real,
-    liikenne_hlo_tco2 real,
+    liikenne_as_tco2 real,
+    liikenne_tp_tco2 real,
     liikenne_tv_tco2 real,
     liikenne_palv_tco2 real,
     rak_korjaussaneeraus_tco2 real,
@@ -56,13 +59,13 @@ BEGIN
             CREATE TEMP TABLE res AS
             SELECT * FROM
                 public.CO2_CalculateEmissions(
-                    aoi, calculationYear, calculationScenario, method, electricityType, baseYear, targetYear, plan_areas, plan_centers, plan_transit
+                    aoi, includeLongDistance, includeBusinessTravel, array[calculationYear, 2017, 2050], calculationScenario, method, electricityType, baseYear, targetYear, plan_areas, plan_centers, plan_transit
                 );
         ELSE 
             INSERT INTO res
             SELECT * FROM
                 public.CO2_CalculateEmissions(
-                    aoi, calculationYear, calculationScenario, method, electricityType, baseYear, targetYear, plan_areas, plan_centers, plan_transit
+                    aoi, includeLongDistance, includeBusinessTravel, array[calculationYear, 2017, 2050], calculationScenario, method, electricityType, baseYear, targetYear, plan_areas, plan_centers, plan_transit
                 );
         END IF;
         
@@ -74,8 +77,8 @@ BEGIN
         WHEN LEFT(res.zone::varchar, 5)::int IN (99931, 99932) THEN 3
         WHEN LEFT(res.zone::varchar, 5)::int IN (99941, 99942) THEN 3
         WHEN LEFT(res.zone::varchar, 5)::int IN (99951, 99952) THEN 3
-        WHEN LEFT(res.zone::varchar, 5)::int IN (6, 99961, 99962) THEN 10
-        WHEN LEFT(res.zone::varchar, 5)::int IN (6, 99901, 99902) THEN 10
+        WHEN LEFT(res.zone::varchar, 5)::int IN (6, 99961, 99962, 99901, 99902, 99910) THEN 10
+        WHEN LEFT(res.zone::varchar, 5)::int IN (99981, 99982, 99983, 99984, 99985, 99986, 99987) THEN RIGHT(LEFT(res.zone::varchar, 5),2)::int
     ELSE res.zone END;
 
     RETURN QUERY SELECT * FROM res;

@@ -14,7 +14,7 @@ DROP FUNCTION IF EXISTS CO2_TrafficIWHS;
 CREATE OR REPLACE FUNCTION
 public.CO2_TrafficIWHS(
     municipality integer, -- Municipality, for which the values are calculated
-    calculationYear integer, -- Vuosi, jonka perusteella päästöt lasketaan / viitearvot haetaan
+    calculationYears integer[], -- [year based on which emission values are calculated, min, max calculation years]
     calculationScenario varchar, -- PITKO:n mukainen kehitysskenaario
     floorSpace integer, -- Rakennusten kerrosala tai lukumäärä (vain teoll ja varast - tapauksissa)
     buildingType varchar -- buildingType | Building type. esim. | e.g. 'erpien', 'rivita'
@@ -22,6 +22,7 @@ public.CO2_TrafficIWHS(
 RETURNS real AS
 $$
 DECLARE
+    calculationYear integer; 
     services varchar[] default ARRAY['myymal_hyper', 'myymal_super', 'myymal_pien', 'myymal_muu', 'myymal', 'majoit', 'asla', 'ravint', 'tsto', 'liiken', 'hoito', 'kokoon', 'opetus', 'muut'];
     gco2_output real;
 
@@ -30,6 +31,11 @@ BEGIN
         OR floorSpace IS NULL
         THEN RETURN 0;
     ELSE
+
+        calculationYear := CASE WHEN calculationYears[1] < calculationYears[2] THEN calculationYears[2]
+        WHEN calculationYears[1] > calculationYears[3] THEN calculationYears[3]
+        ELSE calculationYears[1]
+        END;
     
     /*  Tavarakuljetusten vuosisuorite palv_km [km/a] on laskentavuonna
             palv_km = rakennus_ala * muunto_ala_tliikenne * palv_suorite * palv_kuljetus_km * arkipaivat

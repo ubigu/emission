@@ -12,7 +12,7 @@ DROP FUNCTION IF EXISTS CO2_PropertyCooling;
 CREATE OR REPLACE FUNCTION
 public.CO2_PropertyCooling(
     municipality int,
-    calculationYear integer, -- Laskentavuosi | Calculation / reference year
+    calculationYears integer[], -- [year based on which emission values are calculated, min, max calculation years]
     calculationScenario varchar, -- PITKO-kehitysskenaario | PITKO development scenario
     floorSpace integer, -- Rakennustyypin tietyn ikäluokan kerrosala YKR-ruudussa laskentavuonna. Lukuarvo riippuu laskentavuodesta, rakennuksen tyypistä ja ikäluokasta [m2]
     buildingType varchar, -- Rakennustyyppi | Building type. esim. | e.g. 'erpien', 'rivita'
@@ -21,6 +21,7 @@ public.CO2_PropertyCooling(
 RETURNS real AS
 $$
 DECLARE
+    calculationYear integer;
     result_gco2 real;
     jaahdytys_kwhm2 real[]; -- Rakennustyypin ikäluokan jäähdytysenergian tarve yhtä kerrosneliötä kohti. Arvo riippuu taustaskenaariosta, rakennuksen tyypistä ja ikäluokasta [kWh/m2/a]
     jaahdytys_kwh real[]; -- Jäähdytyksen energiankulutus
@@ -34,6 +35,11 @@ BEGIN
     /* Muussa tapauksessa jatka laskentaan */
     /* In other cases continue with the calculation */
     ELSE
+
+        calculationYear := CASE WHEN calculationYears[1] < calculationYears[2] THEN calculationYears[2]
+        WHEN calculationYears[1] > calculationYears[3] THEN calculationYears[3]
+        ELSE calculationYears[1]
+        END;
 
     /* Dummy-kertoimet jäähdytysmuodoille | Dummy multipliers by method of cooling */
     /* Jäähdytyksen ominaispäästökertoimet | Emission values for cooling */

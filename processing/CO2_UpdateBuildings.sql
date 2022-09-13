@@ -2,7 +2,7 @@ CREATE OR REPLACE FUNCTION
 public.CO2_UpdateBuildings(
     rak_taulu text,
     ykr_taulu text,
-    calculationYear integer
+    calculationYears integer[] -- [year based on which emission values are calculated, min, max calculation years]
 )
 RETURNS TABLE (
     xyind varchar,
@@ -27,9 +27,15 @@ RETURNS TABLE (
     muut_ala integer
 ) AS $$
 DECLARE
+    calculationYear integer; 
     teoll_koko numeric;
     varast_koko numeric;
 BEGIN
+
+    calculationYear := CASE WHEN calculationYears[1] < calculationYears[2] THEN calculationYears[2]
+    WHEN calculationYears[1] > calculationYears[3] THEN calculationYears[3]
+    ELSE calculationYears[1]
+    END;
 
 EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS rak AS SELECT xyind, rakv::int, rakyht_ala::int, asuin_ala::int, erpien_ala::int, rivita_ala::int, askert_ala::int, liike_ala::int, myymal_ala::int, majoit_ala::int, asla_ala::int, ravint_ala::int, tsto_ala::int, liiken_ala::int, hoito_ala::int, kokoon_ala::int, opetus_ala::int, teoll_ala::int, varast_ala::int, muut_ala::int FROM ' || quote_ident(rak_taulu) ||' WHERE rakv::int != 0';
 EXECUTE 'CREATE TEMP TABLE IF NOT EXISTS ykr AS SELECT xyind, k_ap_ala, k_ar_ala, k_ak_ala, k_muu_ala, k_poistuma FROM ' || quote_ident(ykr_taulu) || ' WHERE (k_ap_ala IS NOT NULL AND k_ap_ala != 0) OR (k_ar_ala IS NOT NULL AND k_ar_ala != 0) OR  (k_ak_ala IS NOT NULL AND k_ak_ala != 0) OR (k_muu_ala IS NOT NULL AND k_muu_ala != 0) OR (k_poistuma IS NOT NULL AND k_poistuma != 0)';

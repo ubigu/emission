@@ -16,7 +16,7 @@ DROP FUNCTION IF EXISTS CO2_ElectricityIWHS;
 CREATE OR REPLACE FUNCTION
 public.CO2_ElectricityIWHS(
     municipality int,
-    calculationYear integer, -- Laskentavuosi | Calculation / reference year
+    calculationYears integer[], -- [year based on which emission values are calculated, min, max calculation years]
     calculationScenario varchar, -- PITKO-kehitysskenaario | PITKO development scenario
     floorSpace real, -- rakennustyypin kerrosala YKR-ruudussa laskentavuonna [m2]. Riippuu laskentavuodesta, rakennuksen tyypistä ja ikäluokasta.
     buildingType varchar -- Rakennustyyppi | Building type. esim. | e.g. 'erpien', 'rivita'
@@ -24,6 +24,7 @@ public.CO2_ElectricityIWHS(
 RETURNS real AS
 $$
 DECLARE
+    calculationYear integer;
     services varchar[] default ARRAY['myymal_hyper', 'myymal_super', 'myymal_pien', 'myymal_muu', 'myymal', 'majoit', 'asla', 'ravint', 'tsto', 'liiken', 'hoito', 'kokoon', 'opetus', 'muut'];
     result_gco2 real;
 BEGIN
@@ -32,6 +33,11 @@ BEGIN
         OR floorSpace IS NULL THEN
         RETURN 0;
     ELSE
+
+        calculationYear := CASE WHEN calculationYears[1] < calculationYears[2] THEN calculationYears[2]
+            WHEN calculationYears[1] > calculationYears[3] THEN calculationYears[3]
+            ELSE calculationYears[1]
+        END;
 
         EXECUTE FORMAT('
             WITH 
