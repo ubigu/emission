@@ -81,8 +81,8 @@ EXECUTE format('CREATE TEMP TABLE IF NOT EXISTS rak AS SELECT xyind::varchar, ra
 /* Fetching global heating ratios for current calculation year and scenario */
 CREATE TEMP TABLE IF NOT EXISTS global_jakauma AS
 	SELECT rakennus_tyyppi, kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, turve, hiili, maalampo, muu_lammitys
-	FROM rakymp.lammitysmuotojakauma lmj
-	WHERE lmj.vuosi = calculationYear AND lmj.rakv = calculationYear AND lmj.skenaario = kehitysskenaario;
+	FROM built.distribution_heating_systems dhs
+	WHERE dhs.vuosi = calculationYear AND dhs.rakv = calculationYear AND dhs.skenaario = kehitysskenaario;
 
 INSERT INTO global_jakauma (rakennus_tyyppi, kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, turve, hiili, maalampo, muu_lammitys)
 	SELECT 'rakyht', avg(kaukolampo), avg(kevyt_oljy), avg(raskas_oljy), avg(kaasu), avg(sahko), avg(puu), avg(turve), avg(hiili), avg(maalampo), avg(muu_lammitys)
@@ -1346,52 +1346,52 @@ muutos AS (
  FROM (SELECT t.xyind, t.rakv, t.energiam,
  
  		(CASE WHEN t.erpien_ala IS NOT NULL AND NOT(t.erpien_ala <= 0) THEN ARRAY(SELECT t.erpien_ala * 
-			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM rakymp."tilat_lmuoto_muutos" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'erpien' AND lammitysmuoto = t.energiam)
+			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM energy."heat_source_change" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'erpien' AND lammitysmuoto = t.energiam)
         )) END) as erpien,
  		(CASE WHEN t.rivita_ala IS NOT NULL AND NOT(t.rivita_ala <= 0) THEN ARRAY(SELECT t.rivita_ala * 
-			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM rakymp."tilat_lmuoto_muutos" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'rivita' AND lammitysmuoto = t.energiam)
+			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM energy."heat_source_change" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'rivita' AND lammitysmuoto = t.energiam)
         )) END) as rivita,
  		(CASE WHEN t.askert_ala IS NOT NULL AND NOT(t.askert_ala <= 0) THEN ARRAY(SELECT t.askert_ala * 
-			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM rakymp."tilat_lmuoto_muutos" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'askert' AND lammitysmuoto = t.energiam)
+			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM energy."heat_source_change" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'askert' AND lammitysmuoto = t.energiam)
         )) END) as askert, 
  		(CASE WHEN t.liike_ala IS NOT NULL AND NOT(t.liike_ala <= 0) THEN ARRAY(SELECT t.liike_ala * 
-			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM rakymp."tilat_lmuoto_muutos" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'liike' AND lammitysmuoto = t.energiam)
+			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM energy."heat_source_change" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'liike' AND lammitysmuoto = t.energiam)
         )) END) as liike,
  		(CASE WHEN t.myymal_ala IS NOT NULL AND NOT(t.myymal_ala <= 0) THEN ARRAY(SELECT t.myymal_ala * 
-			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM rakymp."tilat_lmuoto_muutos" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'liike' AND lammitysmuoto = t.energiam)
+			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM energy."heat_source_change" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'liike' AND lammitysmuoto = t.energiam)
         )) END) as myymal,
  		(CASE WHEN t.majoit_ala IS NOT NULL AND NOT(t.majoit_ala <= 0) THEN ARRAY(SELECT t.majoit_ala * 
-			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM rakymp."tilat_lmuoto_muutos" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'liike' AND lammitysmuoto = t.energiam)
+			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM energy."heat_source_change" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'liike' AND lammitysmuoto = t.energiam)
         )) END) as majoit,
  		(CASE WHEN t.asla_ala IS NOT NULL AND NOT(t.asla_ala <= 0) THEN ARRAY(SELECT t.asla_ala * 
-			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM rakymp."tilat_lmuoto_muutos" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'liike' AND lammitysmuoto = t.energiam)
+			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM energy."heat_source_change" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'liike' AND lammitysmuoto = t.energiam)
         )) END) as asla,
  		(CASE WHEN t.ravint_ala IS NOT NULL AND NOT(t.ravint_ala <= 0) THEN ARRAY(SELECT t.ravint_ala * 
-			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM rakymp."tilat_lmuoto_muutos" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'liike' AND lammitysmuoto = t.energiam)
+			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM energy."heat_source_change" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'liike' AND lammitysmuoto = t.energiam)
         )) END) as ravint,
  		(CASE WHEN t.tsto_ala IS NOT NULL AND NOT(t.tsto_ala <= 0) THEN ARRAY(SELECT t.tsto_ala * 
-			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM rakymp."tilat_lmuoto_muutos" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'tsto' AND lammitysmuoto = t.energiam)
+			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM energy."heat_source_change" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'tsto' AND lammitysmuoto = t.energiam)
         )) END) as tsto, 
  		(CASE WHEN t.liiken_ala IS NOT NULL AND NOT(t.liiken_ala <= 0) THEN ARRAY(SELECT t.liiken_ala * 
-			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM rakymp."tilat_lmuoto_muutos" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'liiken' AND lammitysmuoto = t.energiam)
+			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM energy."heat_source_change" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'liiken' AND lammitysmuoto = t.energiam)
         )) END) as liiken,
  		(CASE WHEN t.hoito_ala IS NOT NULL AND NOT(t.hoito_ala <= 0) THEN ARRAY(SELECT t.hoito_ala * 
-			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM rakymp."tilat_lmuoto_muutos" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'hoito' AND lammitysmuoto = t.energiam)
+			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM energy."heat_source_change" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'hoito' AND lammitysmuoto = t.energiam)
         )) END) as hoito,
  		(CASE WHEN t.kokoon_ala IS NOT NULL AND NOT(t.kokoon_ala <= 0) THEN ARRAY(SELECT t.kokoon_ala * 
-			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM rakymp."tilat_lmuoto_muutos" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'kokoon' AND lammitysmuoto = t.energiam)
+			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM energy."heat_source_change" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'kokoon' AND lammitysmuoto = t.energiam)
         )) END) as kokoon,
  		(CASE WHEN t.opetus_ala IS NOT NULL AND NOT(t.opetus_ala <= 0) THEN ARRAY(SELECT t.opetus_ala * 
-			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM rakymp."tilat_lmuoto_muutos" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'opetus' AND lammitysmuoto = t.energiam)
+			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM energy."heat_source_change" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'opetus' AND lammitysmuoto = t.energiam)
         )) END) as opetus,
 		(CASE WHEN t.teoll_ala IS NOT NULL AND NOT(t.teoll_ala <= 0) THEN ARRAY(SELECT t.teoll_ala * 
-			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM rakymp."tilat_lmuoto_muutos" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'teoll' AND lammitysmuoto = t.energiam)
+			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM energy."heat_source_change" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'teoll' AND lammitysmuoto = t.energiam)
 		)) END) as teoll,
 		(CASE WHEN t.varast_ala IS NOT NULL AND NOT(t.varast_ala <= 0) THEN ARRAY(SELECT t.varast_ala * 
-			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM rakymp."tilat_lmuoto_muutos" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'varast' AND lammitysmuoto = t.energiam)
+			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM energy."heat_source_change" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'varast' AND lammitysmuoto = t.energiam)
 		)) END) as varast,
 		(CASE WHEN t.muut_ala IS NOT NULL AND NOT(t.muut_ala <= 0) THEN ARRAY(SELECT t.muut_ala * 
-			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM rakymp."tilat_lmuoto_muutos" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'muut' AND lammitysmuoto = t.energiam)
+			UNNEST((SELECT ARRAY[kaukolampo, kevyt_oljy, raskas_oljy, kaasu, sahko, puu, maalampo] FROM energy."heat_source_change" WHERE skenaario = kehitysskenaario AND rakennus_tyyppi = 'muut' AND lammitysmuoto = t.energiam)
 		)) END) as muut
  	FROM rak_temp t WHERE t.rakv != 0
 	) sq
